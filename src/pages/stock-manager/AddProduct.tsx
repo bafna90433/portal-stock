@@ -39,8 +39,8 @@ const AddProduct: React.FC = () => {
         unit: p.unit || 'pcs',
         wholesalerPrice: p.wholesalerPrice ? String(p.wholesalerPrice) : '',
         wholesalerMrp: p.wholesalerMrp ? String(p.wholesalerMrp) : '',
-        retailerPrice: p.retailerPrice ? String(p.retailerPrice) : '',
-        retailerMrp: p.retailerMrp ? String(p.retailerMrp) : '',
+        retailerPrice: '0',
+        retailerMrp: '0',
         category: p.category || '',
         description: p.description || '',
         initialQty: '0',
@@ -83,8 +83,8 @@ const AddProduct: React.FC = () => {
     unit: 'pcs',
     wholesalerPrice: '',
     wholesalerMrp: '',
-    retailerPrice: '',
-    retailerMrp: '',
+    retailerPrice: '0',
+    retailerMrp: '0',
     category: '',
     description: '',
     initialQty: '0',
@@ -123,8 +123,6 @@ const AddProduct: React.FC = () => {
     if (!form.name || (!isEdit && !form.sku)) return toast.error('Product name and SKU are required');
     if (!form.wholesalerPrice || Number(form.wholesalerPrice) <= 0) return toast.error('Wholesaler Price is required');
     if (!form.wholesalerMrp || Number(form.wholesalerMrp) <= 0) return toast.error('Wholesaler MRP is required');
-    if (!form.retailerPrice || Number(form.retailerPrice) <= 0) return toast.error('Retailer Price is required');
-    if (!form.retailerMrp || Number(form.retailerMrp) <= 0) return toast.error('Retailer MRP is required');
     setLoading(true);
     try {
       const fd = new FormData();
@@ -141,9 +139,9 @@ const AddProduct: React.FC = () => {
       fd.append('wholesalerMrp', form.wholesalerMrp || '0');
       const validTiers = bulkTiers.filter(t => t.minQty && t.price).map(t => ({ minQty: Number(t.minQty), unit: t.unit, price: Number(t.price) }));
       fd.append('bulkPricingTiers', JSON.stringify(validTiers));
-      fd.append('retailerPrice', form.retailerPrice || '0');
-      fd.append('retailerMrp', form.retailerMrp || '0');
-      fd.append('pricePerUnit', form.retailerPrice || '0');
+      fd.append('retailerPrice', form.wholesalerPrice || '0');
+      fd.append('retailerMrp', form.wholesalerMrp || '0');
+      fd.append('pricePerUnit', form.wholesalerPrice || '0');
       if (file) fd.append('image', file);
 
       if (isEdit) {
@@ -168,7 +166,7 @@ const AddProduct: React.FC = () => {
         toast.success('Product added successfully!');
         setTimeout(() => {
           setSuccess(false);
-          setForm({ name: '', sku: '', unit: 'pcs', wholesalerPrice: '', wholesalerMrp: '', retailerPrice: '', retailerMrp: '', category: categories[0]?.name || '', description: '', initialQty: '0', pcsPerInner: '0', innerPerCarton: '0' });
+          setForm({ name: '', sku: '', unit: 'pcs', wholesalerPrice: '', wholesalerMrp: '', retailerPrice: '0', retailerMrp: '0', category: categories[0]?.name || '', description: '', initialQty: '0', pcsPerInner: '0', innerPerCarton: '0' });
           setBulkTiers([]);
           setStockCartons(0); setStockInners(0); setStockLoose(0);
           setPreview(null);
@@ -452,38 +450,7 @@ const AddProduct: React.FC = () => {
                 })}
               </div>
 
-              {/* Retailer row */}
-              <div style={{ padding: '0.75rem 0.85rem', background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 10 }}>
-                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#10B981', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.6rem' }}>
-                  🛒 Retailer
-                </div>
-                <div className="form-grid">
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Price (₹) *</label>
-                    <input
-                      className="form-control"
-                      type="number" min="0.01" step="0.01"
-                      value={form.retailerPrice}
-                      onChange={e => setForm({ ...form, retailerPrice: e.target.value })}
-                      placeholder="0.00"
-                      required
-                      style={{ fontSize: '1rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}
-                    />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">MRP (₹) *</label>
-                    <input
-                      className="form-control"
-                      type="number" min="0.01" step="0.01"
-                      value={form.retailerMrp}
-                      onChange={e => setForm({ ...form, retailerMrp: e.target.value })}
-                      placeholder="0.00"
-                      required
-                      style={{ fontSize: '1rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}
-                    />
-                  </div>
-                </div>
-              </div>
+              {/* Retailer pricing removed */}
             </div>
 
             <button type="submit" className="btn btn-primary btn-lg" disabled={loading} style={{ width: '100%', justifyContent: 'center', marginTop: '1.5rem' }}>
