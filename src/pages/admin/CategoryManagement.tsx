@@ -8,6 +8,7 @@ interface Category {
   name: string;
   description: string;
   isActive: boolean;
+  productCount?: number;
 }
 
 const CategoryManagement: React.FC = () => {
@@ -83,6 +84,23 @@ const CategoryManagement: React.FC = () => {
     }
   };
 
+  const handleToggleActive = async (cat: Category) => {
+    const newStatus = !cat.isActive;
+    const confirmMsg = newStatus 
+      ? `Are you sure you want to enable the "${cat.name}" category? All products under this category will also be enabled.`
+      : `Are you sure you want to disable the "${cat.name}" category? All products under this category will also be disabled.`;
+    
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      await api.put(`/categories/${cat._id}`, { isActive: newStatus });
+      toast.success(`Category "${cat.name}" ${newStatus ? 'enabled' : 'disabled'} successfully`);
+      fetchCategories();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to update category status');
+    }
+  };
+
   const filteredCategories = categories.filter(c => 
     c.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -127,6 +145,7 @@ const CategoryManagement: React.FC = () => {
               <thead>
                 <tr>
                   <th>Category Name</th>
+                  <th>Products</th>
                   <th>Status</th>
                   <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
@@ -143,11 +162,54 @@ const CategoryManagement: React.FC = () => {
                       </div>
                     </td>
                     <td>
-                      {cat.isActive ? (
-                        <span className="badge badge-success"><Check size={12} /> Active</span>
-                      ) : (
-                        <span className="badge badge-danger"><X size={12} /> Inactive</span>
-                      )}
+                      <span style={{ 
+                        fontWeight: 700, 
+                        color: 'var(--text-muted)', 
+                        background: 'var(--bg3)', 
+                        padding: '4px 10px', 
+                        borderRadius: 6,
+                        fontSize: '0.85rem',
+                        fontFamily: 'var(--font-mono)'
+                      }}>
+                        {cat.productCount || 0}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        {cat.isActive ? (
+                          <span className="badge badge-success" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><Check size={12} /> Active</span>
+                        ) : (
+                          <span className="badge badge-danger" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><X size={12} /> Inactive</span>
+                        )}
+                        <div 
+                          onClick={() => handleToggleActive(cat)}
+                          title={cat.isActive ? `Disable "${cat.name}" & its products` : `Enable "${cat.name}" & its products`}
+                          style={{
+                            width: 36,
+                            height: 20,
+                            borderRadius: 10,
+                            backgroundColor: cat.isActive ? 'var(--success)' : 'rgba(239, 68, 68, 0.3)',
+                            position: 'relative',
+                            cursor: 'pointer',
+                            transition: 'background-color 0.2s',
+                            display: 'inline-block',
+                          }}
+                        >
+                          <div 
+                            style={{
+                              width: 14,
+                              height: 14,
+                              borderRadius: '50%',
+                              backgroundColor: '#fff',
+                              position: 'absolute',
+                              top: 3,
+                              left: cat.isActive ? 19 : 3,
+                              transition: 'left 0.2s',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                            }}
+                          />
+                        </div>
+                      </div>
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <button className="btn btn-icon" onClick={() => openEditModal(cat)} style={{ color: 'var(--primary-light)', marginRight: 8 }}>
