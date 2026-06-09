@@ -3,7 +3,7 @@ import {
   Package, Search, Edit, Loader, X, Save,
   ArrowUp, TrendingDown, Tag, Plus,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../../api/axios';
 import { debounce } from '../../utils/debounce';
@@ -14,11 +14,12 @@ const StockManagement: React.FC = () => {
   const isAdmin = user?.role === 'admin';
   const isStockMgr = user?.role === 'stock_manager';
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [products, setProducts] = useState<any[]>([]);
   const [visibleCount, setVisibleCount] = useState(50);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(searchParams.get('search') || '');
   const [stockModal, setStockModal] = useState<any>(null);
   const [editModal, setEditModal] = useState<any>(null);
   const [bulkTiers, setBulkTiers] = useState<{ minQty: string; unit: 'pcs' | 'inner' | 'carton'; price: string }[]>([]);

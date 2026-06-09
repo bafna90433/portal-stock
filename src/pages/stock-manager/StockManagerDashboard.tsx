@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import UrgentNotifBanner from '../../components/UrgentNotifBanner';
 import {
   Package, TrendingUp, AlertTriangle, Tags, Plus,
-  BarChart3, RefreshCw, CheckCircle, ArrowUpRight,
+  BarChart3, RefreshCw, CheckCircle, ArrowUpRight, PackageX,
 } from 'lucide-react';
 import DashboardHero from '../../components/DashboardHero';
 import api from '../../api/axios';
@@ -13,9 +13,16 @@ const StockManagerDashboard: React.FC = () => {
   const { user } = useAuthStore();
   const [stats, setStats] = useState<any>({});
   const [recentProducts, setRecentProducts] = useState<any[]>([]);
-  const [lowStockProducts, setLowStockProducts] = useState<any[]>([]);
+  const [stockAlerts, setStockAlerts] = useState<{ alerts: any[]; outOfStockCount: number; lowStockCount: number }>({ alerts: [], outOfStockCount: 0, lowStockCount: 0 });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  const fetchStockAlerts = useCallback(async () => {
+    try {
+      const { data } = await api.get('/dashboard/stock-alerts');
+      setStockAlerts(data);
+    } catch (e) {}
+  }, []);
 
   const fetchData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true); else setRefreshing(true);
@@ -27,7 +34,6 @@ const StockManagerDashboard: React.FC = () => {
       setStats(dashRes.data.stats || {});
       const products: any[] = productsRes.data.products || [];
       setRecentProducts([...products].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10));
-      setLowStockProducts(products.filter((p: any) => (p.stock?.availableQty ?? 0) <= (p.lowStockThreshold ?? 10)).slice(0, 10));
     } catch (e) {
       /* silent */
     } finally {
@@ -38,9 +44,10 @@ const StockManagerDashboard: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(() => fetchData(true), 30000);
+    fetchStockAlerts();
+    const interval = setInterval(() => { fetchData(true); fetchStockAlerts(); }, 30000);
     return () => clearInterval(interval);
-  }, [fetchData]);
+  }, [fetchData, fetchStockAlerts]);
 
   const statCards = [
     { label: 'Total Products', value: stats.totalProducts ?? 0, icon: <Package size={20} />, color: '#6366F1', bg: 'rgba(99,102,241,0.1)', gradient: 'linear-gradient(135deg,#6366F1,#8B5CF6)', to: '/stock-manager/products' },
@@ -145,73 +152,114 @@ const StockManagerDashboard: React.FC = () => {
         ))}
       </div>
 
-      {/* ── Low Stock Alerts — Full Width Table ── */}
-      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: '1.25rem', overflow: 'hidden', boxShadow: 'var(--shadow-xs)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.9rem' }}>
-            <AlertTriangle size={16} style={{ color: 'var(--warning)' }} /> Low Stock Alerts
-            {!loading && lowStockProducts.length > 0 && (
-              <span style={{ background: 'rgba(245,158,11,0.15)', color: '#F59E0B', fontSize: '0.7rem', fontWeight: 700, padding: '1px 8px', borderRadius: 99 }}>{lowStockProducts.length}</span>
-            )}
+      {/* ── Stock Alerts — using backend stock-alerts API ── */}
+      {stockAlerts.alerts.length > 0 ? (
+        <div style={{
+          background: 'var(--card)',
+          border: `1.5px solid ${stockAlerts.outOfStockCount > 0 ? '#EF4444' : '#F59E0B'}`,
+          borderRadius: 'var(--radius)',
+          marginBottom: '1.25rem',
+          overflow: 'hidden',
+          boxShadow: stockAlerts.outOfStockCount > 0 ? '0 4px 20px rgba(239,68,68,0.12)' : '0 4px 20px rgba(245,158,11,0.12)',
+        }}>
+          {/* Header */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '0.85rem 1.25rem',
+            background: stockAlerts.outOfStockCount > 0 ? 'rgba(239,68,68,0.06)' : 'rgba(245,158,11,0.06)',
+            borderBottom: '1px solid var(--border)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: 8,
+                background: stockAlerts.outOfStockCount > 0 ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <AlertTriangle size={16} color={stockAlerts.outOfStockCount > 0 ? '#EF4444' : '#F59E0B'} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--text-dark)' }}>
+                  Stock Alert — Action Required
+                </div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, marginTop: 1 }}>
+                  {stockAlerts.outOfStockCount > 0 && <span style={{ color: '#EF4444' }}>🔴 {stockAlerts.outOfStockCount} Out of Stock</span>}
+                  {stockAlerts.outOfStockCount > 0 && stockAlerts.lowStockCount > 0 && <span style={{ margin: '0 0.4rem', color: 'var(--border)' }}>•</span>}
+                  {stockAlerts.lowStockCount > 0 && <span style={{ color: '#F59E0B' }}>🟠 {stockAlerts.lowStockCount} Low Stock</span>}
+                  <span style={{ marginLeft: '0.6rem', color: 'var(--text-dim)' }}>— Auto-refreshes every 30s</span>
+                </div>
+              </div>
+            </div>
+              <button
+                onClick={() => fetchStockAlerts()}
+                style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '5px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}
+              >
+                <RefreshCw size={12} /> Refresh
+              </button>
           </div>
-          <Link to="/stock-manager/stock" style={{ fontSize: '0.78rem', color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>Manage all →</Link>
-        </div>
 
-        {loading ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div>
-        ) : lowStockProducts.length === 0 ? (
+          {/* Product list */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '0', maxHeight: 320, overflowY: 'auto' }}>
+            {stockAlerts.alerts.map((alert: any) => (
+              <Link key={alert.productId} to={`/stock-manager/stock?search=${encodeURIComponent(alert.sku)}`} style={{
+                display: 'flex', alignItems: 'center', gap: '0.85rem',
+                padding: '0.8rem 1.25rem',
+                borderBottom: '1px solid var(--border)',
+                borderRight: '1px solid var(--border)',
+                background: alert.status === 'out_of_stock' ? 'rgba(239,68,68,0.03)' : 'transparent',
+                transition: 'background 0.15s',
+                textDecoration: 'none',
+                color: 'inherit',
+                cursor: 'pointer',
+              }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg3)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = alert.status === 'out_of_stock' ? 'rgba(239,68,68,0.03)' : 'transparent'}
+              >
+                {alert.imageUrl ? (
+                  <img src={alert.imageUrl} alt={alert.productName} style={{ width: 38, height: 38, borderRadius: 8, objectFit: 'cover', flexShrink: 0, border: '1px solid var(--border)' }} />
+                ) : (
+                  <div style={{ width: 38, height: 38, borderRadius: 8, background: 'var(--bg3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <PackageX size={18} color="var(--text-dim)" />
+                  </div>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {alert.productName}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', fontWeight: 600, marginTop: 1 }}>SKU: {alert.sku}</div>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{
+                    fontSize: '0.72rem', fontWeight: 900,
+                    padding: '3px 10px', borderRadius: 20,
+                    background: alert.status === 'out_of_stock' ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)',
+                    color: alert.status === 'out_of_stock' ? '#EF4444' : '#D97706',
+                    border: `1px solid ${alert.status === 'out_of_stock' ? 'rgba(239,68,68,0.3)' : 'rgba(245,158,11,0.3)'}`,
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {alert.status === 'out_of_stock' ? '🔴 OUT OF STOCK' : `🟠 ${alert.availableQty} pcs left`}
+                  </div>
+                  {alert.stockCartons > 0 && (
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginTop: 2 }}>{alert.stockCartons} CTN remaining</div>
+                  )}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: '1.25rem', overflow: 'hidden', boxShadow: 'var(--shadow-xs)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.9rem' }}>
+              <AlertTriangle size={16} style={{ color: 'var(--warning)' }} /> Low Stock Alerts
+            </div>
+            <Link to="/stock-manager/stock" style={{ fontSize: '0.78rem', color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>Manage all →</Link>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '2.5rem', gap: '0.5rem' }}>
             <CheckCircle size={28} style={{ color: 'var(--success)', opacity: 0.6 }} />
             <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>All stock levels are healthy</div>
           </div>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'var(--bg3)', borderBottom: '1px solid var(--border)' }}>
-                {['Product', 'SKU', 'Category', 'Available Qty', 'Threshold', 'Status'].map(h => (
-                  <th key={h} style={{ padding: '0.45rem 1.25rem', textAlign: 'left', fontSize: '0.67rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {lowStockProducts.map((p: any, i: number) => {
-                const qty = p.stock?.availableQty ?? 0;
-                const isOut = qty === 0;
-                return (
-                  <tr key={p._id} style={{ borderBottom: i < lowStockProducts.length - 1 ? '1px solid var(--border)' : 'none', transition: 'background 0.12s' }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--bg3)'; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ''; }}
-                  >
-                    <td style={{ padding: '0.45rem 1.25rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
-                        {p.imageUrl ? (
-                          <img src={p.imageUrl} style={{ width: 26, height: 26, borderRadius: 5, objectFit: 'cover', flexShrink: 0 }} alt="" />
-                        ) : (
-                          <div style={{ width: 26, height: 26, borderRadius: 5, background: 'var(--bg3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '0.85rem', border: '1px solid var(--border)' }}>📦</div>
-                        )}
-                        <span style={{ fontWeight: 600, fontSize: '0.82rem' }}>{p.name}</span>
-                      </div>
-                    </td>
-                    <td style={{ padding: '0.45rem 1.25rem', fontSize: '0.76rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{p.sku}</td>
-                    <td style={{ padding: '0.45rem 1.25rem', fontSize: '0.76rem', color: 'var(--text-muted)' }}>{p.category || '—'}</td>
-                    <td style={{ padding: '0.45rem 1.25rem', fontWeight: 700, fontSize: '0.83rem', color: isOut ? 'var(--danger)' : 'var(--warning)' }}>{qty}</td>
-                    <td style={{ padding: '0.45rem 1.25rem', fontSize: '0.76rem', color: 'var(--text-muted)' }}>{p.lowStockThreshold ?? 10}</td>
-                    <td style={{ padding: '0.45rem 1.25rem' }}>
-                      <span style={{
-                        fontSize: '0.67rem', fontWeight: 700, padding: '2px 9px', borderRadius: 99,
-                        background: isOut ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)',
-                        color: isOut ? 'var(--danger)' : 'var(--warning)',
-                      }}>
-                        {isOut ? 'Out of Stock' : 'Low Stock'}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ── Recently Added — Full Width Table ── */}
       <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', boxShadow: 'var(--shadow-xs)' }}>
