@@ -17,40 +17,194 @@ const StockManagement: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [products, setProducts] = useState<any[]>([]);
-  const [visibleCount, setVisibleCount] = useState(50);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(searchParams.get('search') || '');
-  const [stockModal, setStockModal] = useState<any>(null);
-  const [editModal, setEditModal] = useState<any>(null);
-  const [bulkTiers, setBulkTiers] = useState<{ minQty: string; unit: 'pcs' | 'inner' | 'carton'; price: string }[]>([]);
-  const [qty, setQty] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [editForm, setEditForm] = useState<any>({
-    name: '',
-    category: '',
-    unit: '',
-    description: '',
-    wholesalerBillPrice: '',
-    wholesalerPrice: '',
-    wholesalerMrp: '',
-    retailerPrice: '0',
-    retailerMrp: '0',
-    pcsPerInner: '1',
-    innerPerCarton: '1',
-    stock: '',
-  });
+  const [csvPreview, setCsvPreview] = useState<any[] | null>(null);
   const [categories, setCategories] = useState<{ _id: string; name: string }[]>([]);
+  const [page, setPage] = useState(Number(searchParams.get('page')) || 1);
+  const [total, setTotal] = useState(0);
+  const limit = 50;
+  const [stockModal, setStockModal] = useState<any>(null);
+  const [qty, setQty] = useState('');
+
 
   useEffect(() => {
     api.get('/categories').then(res => setCategories(res.data)).catch(console.error);
   }, []);
 
+  const parseCSV = (text: string) => {
+    const lines = text.split(/\r?\n/);
+    if (lines.length === 0) return [];
+    const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, ''));
+    const rows: any[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      if (!lines[i].trim()) continue;
+      const values = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/^["']|["']$/g, ''));
+      const row: any = {};
+      headers.forEach((h, idx) => {
+        row[h] = values[idx] || '';
+      });
+      rows.push(row);
+    }
+    return rows;
+  };
+
+  const handleExportTemplate = async () => {
+    try {
+      toast.loading('Generating template...');
+      const { data } = await api.get('/products?limit=5000');
+      toast.dismiss();
+      const csvRows = [
+        ['Product ID', 'SKU', 'Name', 'Selling Price', 'MRP', 'Cartons', 'Inners', 'Loose Pcs']
+      ];
+      data.products.forEach((p: any) => {
+        csvRows.push([
+          p._id,
+          p.sku || '',
+          p.name || '',
+          p.wholesalerPrice ? String(p.wholesalerPrice) : '0',
+          p.wholesalerMrp ? String(p.wholesalerMrp) : '0',
+          p.stock?.stockCartons ? String(p.stock.stockCartons) : '0',
+          p.stock?.stockInners ? String(p.stock.stockInners) : '0',
+          p.stock?.stockLoose ? String(p.stock.stockLoose) : '0'
+        ]);
+      });
+
+      const csvContent = "data:text/csv;charset=utf-8," 
+        + csvRows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(",")).join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `stock_update_template_${Date.now()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success('Template exported!');
+    } catch (err) {
+      toast.dismiss();
+      toast.error('Failed to export template');
+    }
+  };
+
+  const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      const text = evt.target?.result as string;
+      if (!text) return;
+
+      try {
+        const parsed = parseCSV(text);
+        if (parsed.length === 0) {
+          toast.error('CSV is empty or invalid');
+          return;
+        }
+
+        toast.loading('Comparing data...');
+        const { data } = await api.get('/products?limit=5000');
+        toast.dismiss();
+        const currentProducts = data.products;
+        
+        const diffList: any[] = [];
+        parsed.forEach((row: any) => {
+          const productId = row['Product ID'] || row['product id'] || row['ID'] || row['id'];
+          const sku = row['SKU'] || row['sku'];
+          const name = row['Name'] || row['name'];
+          const sellingPrice = Number(row['Selling Price'] || row['selling price'] || 0);
+          const mrp = Number(row['MRP'] || row['mrp'] || 0);
+          const cartons = Number(row['Cartons'] || row['cartons'] || 0);
+          const inners = Number(row['Inners'] || row['inners'] || 0);
+          const loose = Number(row['Loose Pcs'] || row['Loose'] || row['loose pcs'] || row['loose'] || 0);
+
+          if (!productId) return;
+
+          const current = currentProducts.find((p: any) => String(p._id) === String(productId));
+          if (!current) {
+            diffList.push({
+              productId,
+              sku,
+              name: name || 'Unknown Product',
+              isNew: false,
+              notFound: true
+            });
+            return;
+          }
+
+          const currentSellingPrice = current.wholesalerPrice || 0;
+          const currentMrp = current.wholesalerMrp || 0;
+          const currentCartons = current.stock?.stockCartons || 0;
+          const currentInners = current.stock?.stockInners || 0;
+          const currentLoose = current.stock?.stockLoose || 0;
+
+          const priceChanged = currentSellingPrice !== sellingPrice || currentMrp !== mrp;
+          const stockChanged = currentCartons !== cartons || currentInners !== inners || currentLoose !== loose;
+
+          if (priceChanged || stockChanged) {
+            diffList.push({
+              productId,
+              sku: current.sku,
+              name: current.name,
+              oldPrices: { sellingPrice: currentSellingPrice, mrp: currentMrp },
+              newPrices: { sellingPrice, mrp },
+              oldStock: { cartons: currentCartons, inners: currentInners, loose: currentLoose },
+              newStock: { cartons, inners, loose },
+              priceChanged,
+              stockChanged
+            });
+          }
+        });
+
+        if (diffList.length === 0) {
+          toast.success('No changes found. Everything is up to date.');
+          return;
+        }
+
+        setCsvPreview(diffList);
+      } catch (err) {
+        toast.dismiss();
+        toast.error('Error parsing CSV file');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handleConfirmBulkUpdate = async () => {
+    if (!csvPreview) return;
+    setSubmitting(true);
+    try {
+      const updates = csvPreview
+        .filter(item => !item.notFound)
+        .map(item => ({
+          productId: item.productId,
+          wholesalerPrice: item.newPrices.sellingPrice,
+          wholesalerMrp: item.newPrices.mrp,
+          cartons: item.newStock.cartons,
+          inners: item.newStock.inners,
+          loose: item.newStock.loose
+        }));
+
+      await api.post('/products/bulk-update', { updates });
+      toast.success(`Successfully updated ${updates.length} products!`);
+      setCsvPreview(null);
+      fetchProducts(search, page);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Bulk update failed');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const fetchProducts = useCallback(
-    debounce(async (q: string) => {
+    debounce(async (q: string, p: number) => {
       setLoading(true);
       try {
-        const { data } = await api.get(`/products?search=${encodeURIComponent(q)}&limit=2000`);
+        const { data } = await api.get(`/products?search=${encodeURIComponent(q)}&page=${p}&limit=${limit}`);
         setProducts(data.products);
+        setTotal(data.total);
       } catch {}
       finally { setLoading(false); }
     }, 350),
@@ -58,9 +212,18 @@ const StockManagement: React.FC = () => {
   );
 
   useEffect(() => {
-    setVisibleCount(50);
-    fetchProducts(search);
-  }, [search]);
+    fetchProducts(search, page);
+  }, [search, page]);
+
+  const handlePageChange = (p: number) => {
+    setPage(p);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('page', String(p));
+      return next;
+    });
+  };
+
 
   const handleStockAdd = async () => {
     if (!qty || Number(qty) <= 0) return toast.error('Enter valid quantity');
@@ -73,73 +236,16 @@ const StockManagement: React.FC = () => {
       toast.success('Stock added successfully');
       setStockModal(null);
       setQty('');
-      fetchProducts(search);
+      fetchProducts(search, page);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Stock update failed');
     } finally { setSubmitting(false); }
   };
 
-  const openEdit = (p: any) => {
-    setEditForm({
-      name: p.name,
-      category: p.category || '',
-      unit: p.unit,
-      description: p.description || '',
-      wholesalerBillPrice: p.wholesalerBillPrice ? String(p.wholesalerBillPrice) : '',
-      wholesalerPrice: p.wholesalerPrice ? String(p.wholesalerPrice) : '',
-      wholesalerMrp: p.wholesalerMrp ? String(p.wholesalerMrp) : '',
-      retailerPrice: '0',
-      retailerMrp: '0',
-      pcsPerInner: String(p.pcsPerInner || 1),
-      innerPerCarton: String(p.innerPerCarton || 1),
-      stock: String(p.stock?.availableQty || 0),
-    });
-    setEditModal(p);
-    setBulkTiers((p.bulkPricingTiers || []).map((t: any) => ({ minQty: String(t.minQty), unit: t.unit || 'inner', price: String(t.price) })));
-  };
-
-  const handleEdit = async () => {
-    if (!editForm.wholesalerBillPrice || Number(editForm.wholesalerBillPrice) <= 0) return toast.error('Wholesaler Bill Price is required');
-    if (!editForm.wholesalerPrice || Number(editForm.wholesalerPrice) <= 0) return toast.error('Wholesaler Price is required');
-    if (!editForm.wholesalerMrp || Number(editForm.wholesalerMrp) <= 0) return toast.error('Wholesaler MRP is required');
-    setSubmitting(true);
-    try {
-      await api.put(`/products/${editModal._id}`, {
-        name: editForm.name,
-        category: editForm.category,
-        unit: editForm.unit,
-        description: editForm.description,
-        wholesalerBillPrice: Number(editForm.wholesalerBillPrice) || 0,
-        wholesalerPrice: Number(editForm.wholesalerPrice) || 0,
-        wholesalerMrp: Number(editForm.wholesalerMrp) || 0,
-        bulkPricingTiers: bulkTiers.filter(t => t.minQty && t.price).map(t => ({ minQty: Number(t.minQty), unit: t.unit, price: Number(t.price) })),
-        retailerPrice: Number(editForm.wholesalerPrice) || 0,
-        retailerMrp: Number(editForm.wholesalerMrp) || 0,
-        pricePerUnit: Number(editForm.wholesalerPrice) || 0,
-        pcsPerInner: Number(editForm.pcsPerInner) || 1,
-        innerPerCarton: Number(editForm.innerPerCarton) || 1,
-      });
-      // If stock value changed, update it separately
-      const newStock = Number(editForm.stock) || 0;
-      const currentStock = editModal.stock?.availableQty || 0;
-      if (newStock !== currentStock) {
-        const diff = newStock - currentStock;
-        await api.patch(`/products/${editModal._id}/stock`, {
-          qty: Math.abs(diff),
-          operation: diff >= 0 ? 'add' : 'remove',
-        });
-      }
-      toast.success('Product updated!');
-      setEditModal(null);
-      fetchProducts(search);
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Update failed');
-    } finally { setSubmitting(false); }
-  };
-
   const formatStock = (product: any) => {
-    const totalPcs = product.stock?.availableQty || 0;
-    const pcsPerInner = product.pcsPerInner || 0;
+
+    const totalPcs = Number(product.stock?.availableQty) || 0;
+    const pcsPerInner = Number(product.pcsPerInner) || 0;
     const innerPerCarton = product.innerPerCarton || 0;
     const hasInner = pcsPerInner > 1;
     const hasCarton = innerPerCarton > 1;
@@ -186,9 +292,18 @@ const StockManagement: React.FC = () => {
           </p>
         </div>
         {(isAdmin || isStockMgr) && (
-          <a href={addProductLink} className="btn btn-primary">
-            <Package size={16} /> Add Product
-          </a>
+          <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center' }}>
+            <button className="btn btn-secondary" onClick={handleExportTemplate}>
+              Export Template
+            </button>
+            <label className="btn btn-secondary" style={{ cursor: 'pointer', margin: 0 }}>
+              Import CSV
+              <input type="file" accept=".csv" onChange={handleImportCSV} style={{ display: 'none' }} />
+            </label>
+            <a href={addProductLink} className="btn btn-primary">
+              <Package size={16} /> Add Product
+            </a>
+          </div>
         )}
       </div>
 
@@ -232,7 +347,17 @@ const StockManagement: React.FC = () => {
             className="form-control"
             placeholder="Search products by name or SKU..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => {
+              setSearch(e.target.value);
+              setPage(1);
+              setSearchParams(prev => {
+                const next = new URLSearchParams(prev);
+                if (e.target.value) next.set('search', e.target.value);
+                else next.delete('search');
+                next.set('page', '1');
+                return next;
+              });
+            }}
           />
         </div>
       </div>
@@ -256,7 +381,7 @@ const StockManagement: React.FC = () => {
                   <th>SKU</th>
                   <th>Category</th>
                   <th>Unit</th>
-                  <th>Wholesaler</th>
+                  <th>Price / MRP</th>
                   <th>Stock</th>
                   <th>Actions</th>
                 </tr>
@@ -289,9 +414,6 @@ const StockManagement: React.FC = () => {
                       <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem' }}>
                         {wp > 0 ? (
                           <div>
-                            {Number(p.wholesalerBillPrice) > 0 && (
-                              <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', fontWeight: 600 }}>Bill ₹{Number(p.wholesalerBillPrice).toFixed(2)}</div>
-                            )}
                             <div style={{ fontWeight: 800, color: 'var(--primary)' }}>₹{wp.toFixed(2)}</div>
                             {Number(p.wholesalerMrp) > 0 && (
                               <div style={{ fontSize: '0.68rem', color: '#D97706', fontWeight: 600 }}>MRP ₹{Number(p.wholesalerMrp).toFixed(2)}</div>
@@ -307,8 +429,8 @@ const StockManagement: React.FC = () => {
                       {/* Retailer column removed */}
                       <td>
                         {(() => {
-                          const totalPcs = p.stock?.availableQty || 0;
-                          const stockColor = totalPcs === 0 ? 'var(--danger)' : totalPcs < 5 ? 'var(--warning)' : 'var(--success)';
+                          const totalPcs = Number(p.stock?.availableQty) || 0;
+                          const stockColor = totalPcs <= 0 ? 'var(--danger)' : totalPcs < 5 ? 'var(--warning)' : 'var(--success)';
                           const parts = formatStock(p);
                           return (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -322,7 +444,7 @@ const StockManagement: React.FC = () => {
                                   </span>
                                 </div>
                               ))}
-                              {totalPcs === 0 && <span className="badge status-pending" style={{ fontSize: '0.58rem', marginTop: 1 }}>Out</span>}
+                              {totalPcs <= 0 && <span className="badge status-pending" style={{ fontSize: '0.58rem', marginTop: 1 }}>Out</span>}
                               {totalPcs > 0 && totalPcs < 5 && <span className="badge status-partial" style={{ fontSize: '0.58rem', marginTop: 1 }}>Low</span>}
                             </div>
                           );
@@ -358,6 +480,78 @@ const StockManagement: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Pagination Controls */}
+      {(() => {
+        const totalPages = Math.ceil(total / limit);
+        if (totalPages <= 1) return null;
+
+        const pages: (number | string)[] = [];
+        const range = 1;
+
+        for (let i = 1; i <= totalPages; i++) {
+          if (
+            i === 1 ||
+            i === totalPages ||
+            (i >= page - range && i <= page + range)
+          ) {
+            pages.push(i);
+          } else if (pages[pages.length - 1] !== '...') {
+            pages.push('...');
+          }
+        }
+
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginTop: '1.5rem', marginBottom: '1rem' }}>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => handlePageChange(page - 1)}
+              disabled={page === 1}
+              style={{ padding: '0.4rem 0.75rem', fontWeight: 600 }}
+            >
+              Prev
+            </button>
+            
+            {pages.map((p, i) => {
+              if (p === '...') {
+                return <span key={i} style={{ color: 'var(--text-dim)', padding: '0 0.25rem' }}>...</span>;
+              }
+              const isCurrent = p === page;
+              return (
+                <button
+                  key={i}
+                  className={isCurrent ? "btn btn-primary btn-sm" : "btn btn-secondary btn-sm"}
+                  onClick={() => handlePageChange(p as number)}
+                  style={{
+                    minWidth: 32,
+                    height: 32,
+                    padding: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 700,
+                    borderRadius: 8,
+                    background: isCurrent ? 'var(--primary)' : 'var(--bg3)',
+                    border: isCurrent ? 'none' : '1px solid var(--border)',
+                    color: isCurrent ? 'white' : 'var(--text)',
+                  }}
+                >
+                  {p}
+                </button>
+              );
+            })}
+
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => handlePageChange(page + 1)}
+              disabled={page === totalPages}
+              style={{ padding: '0.4rem 0.75rem', fontWeight: 600 }}
+            >
+              Next
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Add Stock Modal */}
       {stockModal && (
@@ -406,213 +600,67 @@ const StockManagement: React.FC = () => {
         </div>
       )}
 
-      {/* Combined Edit Modal */}
-      {editModal && (
-        <div className="modal-overlay" onClick={() => setEditModal(null)}>
-          <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+      {/* CSV Bulk Update Preview Modal */}
+      {csvPreview && (
+        <div className="modal-overlay" onClick={() => setCsvPreview(null)}>
+          <div className="modal" style={{ maxWidth: 700 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title"><Edit size={18} /> Edit Product</h3>
-              <button className="modal-close" onClick={() => setEditModal(null)}><X size={16} /></button>
+              <h3 className="modal-title"><TrendingDown size={18} color="var(--primary)" /> Bulk Update Preview</h3>
+              <button className="modal-close" onClick={() => setCsvPreview(null)}><X size={16} /></button>
+            </div>
+            
+            <div style={{ marginBottom: '1rem', maxHeight: 380, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead style={{ background: 'var(--bg3)', position: 'sticky', top: 0, zIndex: 1 } as any}>
+                  <tr>
+                    <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left' }}>Product</th>
+                    <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left' }}>Price Changes</th>
+                    <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left' }}>Stock Changes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {csvPreview.map((item, idx) => (
+                    <tr key={idx} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td style={{ padding: '0.6rem 0.8rem' }}>
+                        <div style={{ fontWeight: 700 }}>{item.name}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{item.sku}</div>
+                        {item.notFound && <span className="badge status-pending" style={{ fontSize: '0.6rem', marginTop: 4 }}>Not Found</span>}
+                      </td>
+                      <td style={{ padding: '0.6rem 0.8rem' }}>
+                        {item.notFound ? '—' : item.priceChanged ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.78rem' }}>
+                            <div>Sell: <span style={{ textDecoration: 'line-through', color: 'var(--text-dim)' }}>₹{item.oldPrices.sellingPrice}</span> → <span style={{ fontWeight: 700, color: 'var(--primary)' }}>₹{item.newPrices.sellingPrice}</span></div>
+                            <div>MRP: <span style={{ textDecoration: 'line-through', color: 'var(--text-dim)' }}>₹{item.oldPrices.mrp}</span> → <span style={{ fontWeight: 700, color: 'var(--warning)' }}>₹{item.newPrices.mrp}</span></div>
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--text-dim)' }}>No change</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '0.6rem 0.8rem' }}>
+                        {item.notFound ? '—' : item.stockChanged ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.78rem' }}>
+                            <div>Ctn: <span style={{ textDecoration: 'line-through', color: 'var(--text-dim)' }}>{item.oldStock.cartons}</span> → <span style={{ fontWeight: 700, color: '#10B981' }}>{item.newStock.cartons}</span></div>
+                            <div>Inr: <span style={{ textDecoration: 'line-through', color: 'var(--text-dim)' }}>{item.oldStock.inners}</span> → <span style={{ fontWeight: 700, color: '#06B6D4' }}>{item.newStock.inners}</span></div>
+                            <div>Loose: <span style={{ textDecoration: 'line-through', color: 'var(--text-dim)' }}>{item.oldStock.loose}</span> → <span style={{ fontWeight: 700, color: 'var(--text)' }}>{item.newStock.loose}</span></div>
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--text-dim)' }}>No change</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
-            {/* Product info strip */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem', padding: '0.85rem 1rem', background: 'var(--bg3)', borderRadius: 'var(--radius-sm)' }}>
-              {editModal.imageUrl && (
-                <img src={editModal.imageUrl} style={{ width: 46, height: 46, borderRadius: 8, objectFit: 'cover' }} alt="" />
-              )}
-              <div>
-                <div style={{ fontWeight: 700 }}>{editModal.name}</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{editModal.sku}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: 6 }}>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Stock:</span>
-                  <input
-                    type="number"
-                    min="0"
-                    value={editForm.stock}
-                    onChange={e => setEditForm({ ...editForm, stock: e.target.value })}
-                    style={{
-                      width: 80, padding: '2px 8px', borderRadius: 6, border: '1.5px solid var(--border)',
-                      fontWeight: 800, fontSize: '0.88rem', textAlign: 'center',
-                      background: 'var(--bg)', color: Number(editForm.stock) === 0 ? 'var(--danger)'
-                        : Number(editForm.stock) < 5 ? 'var(--warning)' : 'var(--success)',
-                    }}
-                  />
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{editModal.unit}</span>
-                </div>
-              </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1.25rem', padding: '0.5rem 0.75rem', background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.1)', borderRadius: 8 }}>
+              💡 Verify the changes listed above. Products not found or SKU mismatches will be ignored.
             </div>
-
-            {/* — Product Details — */}
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-dim)', marginBottom: '0.6rem' }}>
-              Product Details
-            </div>
-            <div className="form-grid">
-              <div className="form-group">
-                <label className="form-label">Product Name</label>
-                <input className="form-control" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Category</label>
-                <select className="form-control" value={editForm.category} onChange={e => setEditForm({ ...editForm, category: e.target.value })}>
-                  <option value="" disabled>Select Category</option>
-                  {categories.map(c => <option key={c._id} value={c.name}>{c.name}</option>)}
-                </select>
-              </div>
-            </div>
-
-            {/* — Packaging — */}
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-dim)', margin: '0.75rem 0 0.6rem' }}>
-              📦 Packaging
-            </div>
-            <div className="form-grid">
-              <div className="form-group">
-                <label className="form-label">Pcs Per Inner <span style={{ fontWeight: 400, color: 'var(--text-dim)', fontSize: '0.7rem' }}>(0 = no inner)</span></label>
-                <input
-                  className="form-control"
-                  type="number" min="0"
-                  value={editForm.pcsPerInner}
-                  onChange={e => setEditForm({ ...editForm, pcsPerInner: e.target.value })}
-                  placeholder="0 if no inner"
-                  style={{ fontWeight: 700, textAlign: 'center', fontFamily: 'var(--font-mono)' }}
-                />
-                <p style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: 4 }}>1 Inner = ? Pcs</p>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Pcs Per Carton <span style={{ fontWeight: 400, color: 'var(--text-dim)', fontSize: '0.7rem' }}>(0 = no carton)</span></label>
-                <input
-                  className="form-control"
-                  type="number" min="0"
-                  value={editForm.innerPerCarton}
-                  onChange={e => setEditForm({ ...editForm, innerPerCarton: e.target.value })}
-                  placeholder="0 if no carton"
-                  style={{ fontWeight: 700, textAlign: 'center', fontFamily: 'var(--font-mono)' }}
-                />
-                <p style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: 4 }}>1 Carton = ? Pcs</p>
-              </div>
-            </div>
-
-            {/* — Pricing — */}
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-dim)', margin: '0.75rem 0 0.6rem' }}>
-              💰 Pricing
-            </div>
-            {/* Wholesaler */}
-            <div style={{ padding: '0.75rem 0.85rem', background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.15)', borderRadius: 10, marginBottom: '0.75rem' }}>
-              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.55rem' }}>🏭 Wholesaler</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.65rem' }}>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Bill Price (₹) *</label>
-                  <input
-                    className="form-control"
-                    type="number" min="0.01" step="0.01"
-                    value={editForm.wholesalerBillPrice}
-                    onChange={e => setEditForm({ ...editForm, wholesalerBillPrice: e.target.value })}
-                    placeholder="0.00"
-                    required
-                    style={{ fontSize: '1rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}
-                  />
-                  <p style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginTop: 3 }}>Purchase cost</p>
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Selling Price (₹) *</label>
-                  <input
-                    className="form-control"
-                    type="number" min="0.01" step="0.01"
-                    value={editForm.wholesalerPrice}
-                    onChange={e => setEditForm({ ...editForm, wholesalerPrice: e.target.value })}
-                    placeholder="0.00"
-                    required
-                    style={{ fontSize: '1rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}
-                  />
-                  <p style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginTop: 3 }}>Price to wholesaler</p>
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">MRP (₹) *</label>
-                  <input
-                    className="form-control"
-                    type="number" min="0.01" step="0.01"
-                    value={editForm.wholesalerMrp}
-                    onChange={e => setEditForm({ ...editForm, wholesalerMrp: e.target.value })}
-                    placeholder="0.00"
-                    required
-                    style={{ fontSize: '1rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}
-                  />
-                  <p style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginTop: 3 }}>Max retail price</p>
-                </div>
-              </div>
-            </div>
-            {/* Bulk Pricing Tiers */}
-            <div style={{ padding: '0.75rem 0.85rem', background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 10, marginBottom: '0.75rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.55rem' }}>
-                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  📦 Bulk Pricing <span style={{ fontWeight: 500, textTransform: 'none', fontSize: '0.67rem', color: 'var(--text-dim)' }}>(Optional — max 3)</span>
-                </div>
-                {bulkTiers.length < 3 && (
-                  <button type="button" onClick={() => setBulkTiers([...bulkTiers, { minQty: '', unit: 'inner', price: '' }])}
-                    style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', fontWeight: 700, color: '#D97706', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 6, padding: '3px 9px', cursor: 'pointer' }}>
-                    <Plus size={11} /> Add Tier
-                  </button>
-                )}
-              </div>
-              {bulkTiers.length === 0 && (
-                <div style={{ fontSize: '0.73rem', color: 'var(--text-dim)', textAlign: 'center', padding: '0.3rem 0' }}>Click "Add Tier" to set bulk discount pricing</div>
-              )}
-              {bulkTiers.map((tier, i) => {
-                const ppi = Number(editModal?.pcsPerInner) || 1;
-                const ppc = Number(editModal?.innerPerCarton) || 1;
-                const totalPcs = tier.minQty
-                  ? tier.unit === 'inner' ? Number(tier.minQty) * ppi
-                  : tier.unit === 'carton' ? Number(tier.minQty) * ppc
-                  : Number(tier.minQty)
-                  : 0;
-                return (
-                  <div key={i} style={{ marginBottom: i < bulkTiers.length - 1 ? '0.5rem' : 0 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 1fr auto', gap: '0.5rem', alignItems: 'flex-end' }}>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="form-label" style={{ fontSize: '0.67rem' }}>Min Qty (Tier {i + 1})</label>
-                        <input className="form-control" type="number" min="1" placeholder="e.g. 10"
-                          value={tier.minQty}
-                          onChange={e => { const t = [...bulkTiers]; t[i].minQty = e.target.value; setBulkTiers(t); }}
-                          style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: '0.9rem' }} />
-                      </div>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="form-label" style={{ fontSize: '0.67rem' }}>Unit</label>
-                        <select className="form-control"
-                          value={tier.unit}
-                          onChange={e => { const t = [...bulkTiers]; t[i].unit = e.target.value as any; setBulkTiers(t); }}
-                          style={{ fontWeight: 700, fontSize: '0.88rem' }}>
-                          <option value="inner">Inner</option>
-                          <option value="carton">Carton</option>
-                          <option value="pcs">Pcs</option>
-                        </select>
-                      </div>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="form-label" style={{ fontSize: '0.67rem' }}>Bulk Price (₹)</label>
-                        <input className="form-control" type="number" min="0" step="0.01" placeholder="0.00"
-                          value={tier.price}
-                          onChange={e => { const t = [...bulkTiers]; t[i].price = e.target.value; setBulkTiers(t); }}
-                          style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: '0.9rem' }} />
-                      </div>
-                      <button type="button" onClick={() => setBulkTiers(bulkTiers.filter((_, j) => j !== i))}
-                        style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '0.4rem 0.5rem', cursor: 'pointer', color: 'var(--danger)', height: 36, display: 'flex', alignItems: 'center' }}>
-                        <X size={13} />
-                      </button>
-                    </div>
-                    {tier.minQty && totalPcs > 0 && (
-                      <div style={{ fontSize: '0.68rem', color: '#D97706', fontWeight: 600, marginTop: 3, paddingLeft: 2 }}>
-                        ✓ {tier.minQty} {tier.unit}{Number(tier.minQty) > 1 ? 's' : ''} = {totalPcs.toLocaleString()} Pcs
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Retailer pricing removed */}
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <button className="btn btn-secondary" onClick={() => setEditModal(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleEdit} disabled={submitting}>
-                {submitting ? <><Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> Saving...</> : <><Save size={16} /> Save Changes</>}
+              <button className="btn btn-secondary" onClick={() => setCsvPreview(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleConfirmBulkUpdate} disabled={submitting}>
+                {submitting ? <><Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> Applying...</> : <><Save size={16} /> Confirm & Apply</>}
               </button>
             </div>
           </div>
@@ -623,5 +671,6 @@ const StockManagement: React.FC = () => {
     </div>
   );
 };
+
 
 export default StockManagement;

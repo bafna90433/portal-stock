@@ -120,14 +120,14 @@ const AddProduct: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name || (!isEdit && !form.sku)) return toast.error('Product name and SKU are required');
+    if (!form.name || !form.sku) return toast.error('Product name and SKU are required');
     if (!form.wholesalerPrice || Number(form.wholesalerPrice) <= 0) return toast.error('Wholesaler Price is required');
     if (!form.wholesalerMrp || Number(form.wholesalerMrp) <= 0) return toast.error('Wholesaler MRP is required');
     setLoading(true);
     try {
       const fd = new FormData();
       fd.append('name', form.name);
-      if (!isEdit) fd.append('sku', form.sku);
+      fd.append('sku', form.sku);
       fd.append('unit', form.unit);
       fd.append('category', form.category);
       fd.append('description', form.description);
@@ -222,17 +222,14 @@ const AddProduct: React.FC = () => {
                   <input className="form-control" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Honda Clutch Wire" required />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">SKU {!isEdit && '*'}</label>
+                  <label className="form-label">SKU *</label>
                   <input
                     className="form-control"
                     value={form.sku}
-                    onChange={e => !isEdit && setForm({ ...form, sku: e.target.value.toUpperCase() })}
+                    onChange={e => setForm({ ...form, sku: e.target.value.toUpperCase() })}
                     placeholder="e.g. HCW-001"
-                    required={!isEdit}
-                    readOnly={isEdit}
-                    style={isEdit ? { background: 'var(--bg3)', color: 'var(--text-muted)', cursor: 'not-allowed' } : {}}
+                    required
                   />
-                  {isEdit && <p style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginTop: 3 }}>SKU cannot be changed</p>}
                 </div>
               </div>
               <div className="form-group">
@@ -346,10 +343,10 @@ const AddProduct: React.FC = () => {
                 <h3 className="card-title">Pricing</h3>
               </div>
 
-              {/* Wholesaler row */}
+              {/* Pricing details row */}
               <div style={{ padding: '0.75rem 0.85rem', background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.15)', borderRadius: 10, marginBottom: '0.85rem' }}>
                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.6rem' }}>
-                  🏭 Wholesaler
+                  💰 Price Details
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
@@ -363,7 +360,7 @@ const AddProduct: React.FC = () => {
                       required
                       style={{ fontSize: '1rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}
                     />
-                    <p style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginTop: 3 }}>Price to wholesaler</p>
+                    <p style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginTop: 3 }}>Selling price</p>
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">MRP (₹) *</label>
