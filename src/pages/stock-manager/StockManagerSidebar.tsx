@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Package, TrendingUp, Tags, LayoutDashboard, LogOut, Plus, ArrowLeft, Image as ImageIcon } from 'lucide-react';
+import { Package, TrendingUp, Tags, LayoutDashboard, LogOut, Plus, ArrowLeft, Download, Image as ImageIcon } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -46,6 +46,7 @@ const StockManagerSidebar: React.FC<StockManagerSidebarProps> = ({ open, onClose
       label: 'Stock Management',
       badge: alertCount > 0 ? alertCount : null
     },
+    { to: '/stock-manager/inward', icon: <Download size={17} />, label: 'Stock Inward' },
     { to: '/stock-manager/categories', icon: <Tags size={17} />, label: 'Categories' },
     { to: '/stock-manager/history', icon: <Package size={17} />, label: 'Stock History' },
     { to: '/stock-manager/add-product', icon: <Plus size={17} />, label: 'Add Product' },

@@ -15,6 +15,8 @@ import CategoryManagement from './pages/admin/CategoryManagement';
 import StockManagement from './pages/admin/StockManagement';
 import AddProduct from './pages/stock-manager/AddProduct';
 import StockHistory from './pages/stock-manager/StockHistory';
+import StockInward from './pages/stock-manager/StockInward';
+import InwardHistory from './pages/stock-manager/InwardHistory';
 
 const RoleRedirect: React.FC = () => {
   const { user } = useAuthStore();
@@ -56,6 +58,8 @@ function App() {
           <Route path="edit-product/:id" element={<AddProduct />} />
           <Route path="products" element={<Products />} />
           <Route path="history" element={<StockHistory />} />
+          <Route path="inward" element={<StockInward />} />
+          <Route path="inward-history" element={<InwardHistory />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
