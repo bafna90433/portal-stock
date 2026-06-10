@@ -50,7 +50,6 @@ const StockManagerSidebar: React.FC<StockManagerSidebarProps> = ({ open, onClose
     { to: '/stock-manager/categories', icon: <Tags size={17} />, label: 'Categories' },
     { to: '/stock-manager/history', icon: <Package size={17} />, label: 'Stock History' },
     { to: '/stock-manager/add-product', icon: <Plus size={17} />, label: 'Add Product' },
-    { to: '/stock-manager/products', icon: <Package size={17} />, label: 'Products List' },
   ];
 
   return (

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Package, Plus, History, X, ArrowRight } from 'lucide-react';
+import { Search, Package, Plus, History, X, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -10,6 +10,11 @@ const StockInward: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalProducts, setTotalProducts] = useState(0);
+  const limit = 12;
 
   const [cartons, setCartons] = useState('');
   const [inners, setInners] = useState('');
@@ -38,21 +43,19 @@ const StockInward: React.FC = () => {
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
-      if (searchQuery.trim().length >= 2) {
-        searchProducts(searchQuery);
-      } else {
-        setSearchResults([]);
-      }
+      searchProducts(searchQuery, page);
     }, 300);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery]);
+  }, [searchQuery, page]);
 
-  const searchProducts = async (query: string) => {
+  const searchProducts = async (query: string, pageNum: number) => {
     setIsSearching(true);
     try {
-      const { data } = await api.get('/products', { params: { search: query, limit: 10 } });
+      const { data } = await api.get('/products', { params: { search: query, limit, page: pageNum } });
       setSearchResults(data.products);
+      setTotalPages(Math.ceil(data.total / limit) || 1);
+      setTotalProducts(data.total || 0);
     } catch (err) {
       toast.error('Search failed');
     } finally {
@@ -60,10 +63,14 @@ const StockInward: React.FC = () => {
     }
   };
 
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+    setPage(1); // Reset to page 1 on new search
+  };
+
   const handleSelectProduct = (product: any) => {
     setSelectedProduct(product);
     setSearchQuery('');
-    setSearchResults([]);
     setCartons('');
     setInners('');
     setLoose('');
@@ -155,54 +162,102 @@ const StockInward: React.FC = () => {
                 className="form-control"
                 placeholder="Search by SKU or Name..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={handleSearchChange}
                 style={{ padding: '0.85rem 1rem', fontSize: '0.95rem', borderRadius: 10 }}
               />
               {isSearching && (
                 <div style={{ position: 'absolute', right: 12, top: 14, fontSize: '0.8rem', color: 'var(--text-dim)', fontWeight: 600 }}>Searching...</div>
               )}
+            </div>
 
-              {searchResults.length > 0 && (
+            {!selectedProduct && (
+              <>
                 <div style={{
-                  position: 'absolute', top: '100%', left: 0, right: 0,
-                  background: 'var(--bg2)', border: '1px solid var(--border)',
-                  borderRadius: '0.5rem', marginTop: '0.5rem',
-                  boxShadow: '0 10px 30px -5px rgba(0,0,0,0.3)', zIndex: 50,
-                  maxHeight: 350, overflowY: 'auto'
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                  gap: '1rem',
+                  marginTop: '1.5rem'
                 }}>
                   {searchResults.map(p => (
                     <div
                       key={p._id}
                       onClick={() => handleSelectProduct(p)}
                       style={{
-                        padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '1rem',
-                        borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background 0.2s'
+                        padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem',
+                        border: '1px solid var(--border)', borderRadius: '0.75rem', cursor: 'pointer', transition: 'all 0.2s',
+                        background: 'var(--bg2)'
                       }}
-                      onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg3)'}
-                      onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                      onMouseOver={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.05)' }}
+                      onMouseOut={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none' }}
                     >
-                      <div style={{ width: 40, height: 40, borderRadius: 6, overflow: 'hidden', background: 'var(--bg3)', flexShrink: 0 }}>
+                      <div style={{ width: 48, height: 48, borderRadius: 8, overflow: 'hidden', background: 'var(--bg3)', flexShrink: 0 }}>
                         {p.imageUrl ? (
                           <img src={p.imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
                         ) : (
                           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)' }}>
-                            <Package size={20} />
+                            <Package size={24} />
                           </div>
                         )}
                       </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{p.name}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>SKU: {p.sku}</div>
                       </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '0.8rem', fontWeight: 600 }}>{Number(p.stock?.availableQty) || 0} pcs</div>
-                        <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>Current Stock</div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--primary)' }}>{Number(p.stock?.availableQty) || 0} pcs</div>
                       </div>
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                      Total <b>{totalProducts}</b> products
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <button 
+                        className="btn btn-secondary btn-sm" 
+                        disabled={page === 1}
+                        onClick={() => setPage(p => p - 1)}
+                      >
+                        <ChevronLeft size={16} /> Prev
+                      </button>
+                      
+                      <div style={{ display: 'flex', gap: '0.25rem' }}>
+                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                          let startPage = Math.max(1, page - 2);
+                          if (startPage + 4 > totalPages) {
+                            startPage = Math.max(1, totalPages - 4);
+                          }
+                          const pNum = startPage + i;
+                          if (pNum > totalPages) return null;
+                          return (
+                            <button 
+                              key={pNum}
+                              className={`btn btn-sm ${page === pNum ? 'btn-primary' : 'btn-secondary'}`}
+                              onClick={() => setPage(pNum)}
+                              style={{ minWidth: '32px', padding: '0.3rem' }}
+                            >
+                              {pNum}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <button 
+                        className="btn btn-secondary btn-sm" 
+                        disabled={page === totalPages}
+                        onClick={() => setPage(p => p + 1)}
+                      >
+                        Next <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           {selectedProduct && (

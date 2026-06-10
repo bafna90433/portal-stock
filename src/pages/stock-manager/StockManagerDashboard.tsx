@@ -50,7 +50,7 @@ const StockManagerDashboard: React.FC = () => {
   }, [fetchData, fetchStockAlerts]);
 
   const statCards = [
-    { label: 'Total Products', value: stats.totalProducts ?? 0, icon: <Package size={20} />, color: '#6366F1', bg: 'rgba(99,102,241,0.1)', gradient: 'linear-gradient(135deg,#6366F1,#8B5CF6)', to: '/stock-manager/products' },
+    { label: 'Total Products', value: stats.totalProducts ?? 0, icon: <Package size={20} />, color: '#6366F1', bg: 'rgba(99,102,241,0.1)', gradient: 'linear-gradient(135deg,#6366F1,#8B5CF6)', to: '/stock-manager/stock' },
     { label: 'Low Stock Items', value: stats.lowStock ?? 0, icon: <TrendingUp size={20} />, color: '#F59E0B', bg: 'rgba(245,158,11,0.1)', gradient: 'linear-gradient(135deg,#F59E0B,#EF4444)', to: '/stock-manager/stock' },
     { label: 'Out of Stock', value: stats.outOfStock ?? 0, icon: <AlertTriangle size={20} />, color: '#EF4444', bg: 'rgba(239,68,68,0.1)', gradient: 'linear-gradient(135deg,#EF4444,#DC2626)', to: '/stock-manager/stock' },
     { label: 'Categories', value: stats.totalCategories ?? '—', icon: <Tags size={20} />, color: '#10B981', bg: 'rgba(16,185,129,0.1)', gradient: 'linear-gradient(135deg,#10B981,#06B6D4)', to: '/stock-manager/categories' },
@@ -60,7 +60,7 @@ const StockManagerDashboard: React.FC = () => {
     { label: 'Add New Product', icon: <Plus size={16} />, to: '/stock-manager/add-product', color: '#6366F1' },
     { label: 'Manage Stock', icon: <BarChart3 size={16} />, to: '/stock-manager/stock', color: '#10B981' },
     { label: 'Categories', icon: <Tags size={16} />, to: '/stock-manager/categories', color: '#F59E0B' },
-    { label: 'Products List', icon: <Package size={16} />, to: '/stock-manager/products', color: '#06B6D4' },
+    { label: 'Products List', icon: <Package size={16} />, to: '/stock-manager/stock', color: '#06B6D4' },
   ];
 
   return (
@@ -267,7 +267,7 @@ const StockManagerDashboard: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.9rem' }}>
             <RefreshCw size={15} style={{ color: 'var(--primary)' }} /> Recently Added Products
           </div>
-          <Link to="/stock-manager/products" style={{ fontSize: '0.78rem', color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>View all →</Link>
+          <Link to="/stock-manager/stock" style={{ fontSize: '0.78rem', color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>View all  </Link>
         </div>
 
         {loading ? (

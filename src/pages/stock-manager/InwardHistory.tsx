@@ -19,22 +19,12 @@ const InwardHistory: React.FC = () => {
   const fetchHistory = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetching all history but we will filter out non-inward on frontend or we could pass a type if API supports it.
-      // Since API might not support multiple types in 'type' param, we just fetch manual and import.
       const { data } = await api.get('/stock/history', {
-        params: { search, page, limit: 100 } // Fetch more and filter
+        params: { search, type: 'inward', page, limit }
       });
       
-      const inwardLogs = (data.logs || []).filter((log: any) => 
-        log.type === 'import' || (log.type === 'manual' && log.totalChangePcs > 0)
-      );
-      
-      // Simple pagination on frontend for now
-      const start = (page - 1) * limit;
-      const paginated = inwardLogs.slice(start, start + limit);
-      
-      setLogs(paginated);
-      setTotal(inwardLogs.length);
+      setLogs(data.logs || []);
+      setTotal(data.total || 0);
     } catch {
       toast.error('Failed to load inward history');
     } finally {

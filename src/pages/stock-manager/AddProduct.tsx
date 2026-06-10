@@ -159,7 +159,7 @@ const AddProduct: React.FC = () => {
         setCurrentStock(newQty);
         toast.success('Product updated successfully!');
         setSuccess(true);
-        setTimeout(() => navigate('/stock-manager/products'), 1500);
+        setTimeout(() => navigate('/stock-manager/stock'), 1500);
       } else {
         await api.post('/products', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
         setSuccess(true);
@@ -203,7 +203,7 @@ const AddProduct: React.FC = () => {
             {isEdit ? 'Update product details and pricing' : 'Add new product with stock details and pricing'}
           </p>
         </div>
-        <button className="btn btn-secondary" onClick={() => navigate('/stock-manager/products')}>
+        <button className="btn btn-secondary" onClick={() => navigate('/stock-manager/stock')}>
           <ArrowLeft size={16} /> Back to Products
         </button>
       </div>

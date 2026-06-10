@@ -5,7 +5,6 @@ import PortalThemeInjector from './components/PortalThemeInjector';
 
 // Base Pages
 import Login from './pages/Login';
-import Products from './pages/Products';
 import { useAuthStore } from './store/authStore';
 
 // Stock Manager Portal
@@ -56,7 +55,6 @@ function App() {
           <Route path="stock" element={<StockManagement />} />
           <Route path="add-product" element={<AddProduct />} />
           <Route path="edit-product/:id" element={<AddProduct />} />
-          <Route path="products" element={<Products />} />
           <Route path="history" element={<StockHistory />} />
           <Route path="inward" element={<StockInward />} />
           <Route path="inward-history" element={<InwardHistory />} />
