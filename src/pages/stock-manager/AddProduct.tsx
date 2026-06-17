@@ -61,10 +61,11 @@ const AddProduct: React.FC = () => {
           // old record — compute greedy breakdown
           const ppc = Number(p.innerPerCarton ?? 0);
           const ppi = Number(p.pcsPerInner ?? 0);
-          const cartons = ppc > 1 ? Math.floor(qty / ppc) : 0;
-          const rem = ppc > 1 ? qty % ppc : qty;
-          const inners = ppi > 1 ? Math.floor(rem / ppi) : 0;
-          const loose = ppi > 1 ? rem % ppi : rem;
+          const pcsPerCarton = ppi > 0 ? (ppc * ppi) : ppc;
+          const cartons = pcsPerCarton > 0 ? Math.floor(qty / pcsPerCarton) : 0;
+          const rem = pcsPerCarton > 0 ? qty % pcsPerCarton : qty;
+          const inners = ppi > 0 ? Math.floor(rem / ppi) : 0;
+          const loose = ppi > 0 ? rem % ppi : rem;
           setStockCartons(cartons);
           setStockInners(inners);
           setStockLoose(loose);
@@ -99,7 +100,8 @@ const AddProduct: React.FC = () => {
   useEffect(() => {
     const ppc = Number(form.innerPerCarton) || 0;
     const ppi = Number(form.pcsPerInner) || 0;
-    const total = (stockCartons * (ppc > 1 ? ppc : 0)) + (stockInners * (ppi > 1 ? ppi : 0)) + stockLoose;
+    const pcsPerCarton = ppi > 0 ? (ppc * ppi) : ppc;
+    const total = (stockCartons * pcsPerCarton) + (stockInners * ppi) + stockLoose;
     setForm(f => ({ ...f, initialQty: String(total) }));
   }, [stockCartons, stockInners, stockLoose, form.innerPerCarton, form.pcsPerInner]);
 
@@ -148,7 +150,8 @@ const AddProduct: React.FC = () => {
         await api.put(`/products/${id}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
         const ppc = Number(form.innerPerCarton) || 0;
         const ppi = Number(form.pcsPerInner) || 0;
-        const newQty = (stockCartons * (ppc > 1 ? ppc : 0)) + (stockInners * (ppi > 1 ? ppi : 0)) + stockLoose;
+        const pcsPerCarton = ppi > 0 ? (ppc * ppi) : ppc;
+        const newQty = (stockCartons * pcsPerCarton) + (stockInners * ppi) + stockLoose;
         await api.patch(`/products/${id}/stock`, {
           qty: newQty,
           operation: 'set',
@@ -277,9 +280,10 @@ const AddProduct: React.FC = () => {
               {(() => {
                 const ppc = Number(form.innerPerCarton) || 0;
                 const ppi = Number(form.pcsPerInner) || 0;
-                const hasCarton = ppc > 1;
-                const hasInner = ppi > 1;
-                const total = (stockCartons * (hasCarton ? ppc : 0)) + (stockInners * (hasInner ? ppi : 0)) + stockLoose;
+                const pcsPerCarton = ppi > 0 ? (ppc * ppi) : ppc;
+                const hasCarton = ppc > 0;
+                const hasInner = ppi > 0;
+                const total = (stockCartons * pcsPerCarton) + (stockInners * ppi) + stockLoose;
                 const boxInput: React.CSSProperties = { width: '100%', background: 'white', border: '1px solid var(--border)', borderRadius: 10, padding: '0.6rem 0.85rem', fontSize: '1rem', fontWeight: 700, color: 'var(--text)', outline: 'none', fontFamily: 'var(--font-mono)', textAlign: 'center', boxSizing: 'border-box' };
                 return (
                   <div>
