@@ -24,7 +24,7 @@ const StockInward: React.FC = () => {
   const [recentHistory, setRecentHistory] = useState<any[]>([]);
   const navigate = useNavigate();
 
-  const entryOptions = ['Ridhi', 'Rishi', 'Bini', 'Esther'];
+  const entryOptions = ['Anil dash', 'Bimala'];
 
   useEffect(() => {
     fetchRecentHistory();

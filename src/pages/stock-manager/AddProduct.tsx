@@ -296,6 +296,7 @@ const AddProduct: React.FC = () => {
                             <input type="number" min="0" style={boxInput} placeholder="0"
                               value={stockCartons || ''}
                               onChange={e => setStockCartons(Math.max(0, Number(e.target.value) || 0))}
+                              disabled={isEdit}
                             />
                             <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginTop: '0.3rem', textAlign: 'center' }}>1 Carton = {ppc} Pcs</div>
                           </div>
@@ -308,6 +309,7 @@ const AddProduct: React.FC = () => {
                             <input type="number" min="0" style={boxInput} placeholder="0"
                               value={stockInners || ''}
                               onChange={e => setStockInners(Math.max(0, Number(e.target.value) || 0))}
+                              disabled={isEdit}
                             />
                             <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginTop: '0.3rem', textAlign: 'center' }}>1 Inner = {ppi} Pcs</div>
                           </div>
@@ -319,6 +321,7 @@ const AddProduct: React.FC = () => {
                           <input type="number" min="0" style={boxInput} placeholder="0"
                             value={stockLoose || ''}
                             onChange={e => setStockLoose(Math.max(0, Number(e.target.value) || 0))}
+                            disabled={isEdit}
                           />
                           <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginTop: '0.3rem', textAlign: 'center' }}>Individual pieces</div>
                         </div>
