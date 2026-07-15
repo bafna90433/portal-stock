@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Package, Search, Edit, Loader, X, Save,
-  ArrowUp, TrendingDown, Tag, Plus,
+  ArrowUp, TrendingDown, Tag, Plus, RefreshCw,
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -18,6 +18,7 @@ const StockManagement: React.FC = () => {
 
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [submitting, setSubmitting] = useState(false);
   const [csvPreview, setCsvPreview] = useState<any[] | null>(null);
@@ -210,16 +211,32 @@ const StockManagement: React.FC = () => {
     }
   };
 
+  const activeRequestRef = React.useRef(0);
+  const isFirstLoadRef = React.useRef(true);
+
   const fetchProducts = useCallback(
     debounce(async (q: string, p: number) => {
-      setLoading(true);
+      if (isFirstLoadRef.current) {
+        setLoading(true);
+      } else {
+        setRefreshing(true);
+      }
+      const reqId = ++activeRequestRef.current;
       try {
         const { data } = await api.get(`/products?search=${encodeURIComponent(q)}&page=${p}&limit=${limit}`);
-        setProducts(data.products);
-        setTotal(data.total);
+        if (reqId === activeRequestRef.current) {
+          setProducts(data.products);
+          setTotal(data.total);
+          isFirstLoadRef.current = false;
+        }
       } catch {}
-      finally { setLoading(false); }
-    }, 350),
+      finally {
+        if (reqId === activeRequestRef.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
+    }, 100),
     []
   );
 
@@ -254,36 +271,10 @@ const StockManagement: React.FC = () => {
     } finally { setSubmitting(false); }
   };
 
-  const formatStock = (product: any) => {
-
-    const totalPcs = Number(product.stock?.availableQty) || 0;
-    const pcsPerInner = Number(product.pcsPerInner) || 0;
-    const innerPerCarton = product.innerPerCarton || 0;
-    const hasInner = pcsPerInner > 1;
-    const hasCarton = innerPerCarton > 1;
-
-    const savedC = product.stock?.stockCartons ?? 0;
-    const savedI = product.stock?.stockInners ?? 0;
-    const savedL = product.stock?.stockLoose ?? 0;
-    const useSaved = totalPcs > 0 && (savedC > 0 || savedI > 0 || savedL > 0);
-
-    let ctns: number, inners: number, loose: number;
-    if (useSaved) {
-      ctns = savedC; inners = savedI; loose = savedL;
-    } else {
-      let remaining = totalPcs;
-      ctns = hasCarton ? Math.floor(remaining / innerPerCarton) : 0;
-      remaining = hasCarton ? remaining % innerPerCarton : remaining;
-      inners = hasInner ? Math.floor(remaining / pcsPerInner) : 0;
-      loose = hasInner ? remaining % pcsPerInner : remaining;
-    }
-
-    const parts: { val: number; label: string }[] = [];
-    if (hasCarton) parts.push({ val: ctns, label: 'ctn' });
-    if (hasInner) parts.push({ val: inners, label: 'inr' });
-    parts.push({ val: loose, label: 'pcs' });
-    const nonZero = parts.filter(p => p.val > 0);
-    return nonZero.length > 0 ? nonZero : [{ val: 0, label: 'pcs' }];
+  const formatStock = (product: any, usePhysical: boolean = false) => {
+    const targetStock = usePhysical ? product.physicalStock : product.stock;
+    const totalPcs = Number(targetStock?.availableQty) || 0;
+    return [{ val: totalPcs, label: 'pcs' }];
   };
 
   const lowStock = products.filter(p => (p.stock?.availableQty || 0) > 0 && (p.stock?.availableQty || 0) < 5).length;
@@ -354,7 +345,11 @@ const StockManagement: React.FC = () => {
       {/* Search */}
       <div className="card" style={{ marginBottom: '1.5rem', padding: '1rem' }}>
         <div className="search-bar" style={{ maxWidth: '100%' }}>
-          <Search size={16} className="search-icon" />
+          {loading || refreshing ? (
+            <RefreshCw size={16} className="spin" style={{ position: 'absolute', left: 12, top: 13, color: 'var(--primary)' }} />
+          ) : (
+            <Search size={16} className="search-icon" />
+          )}
           <input
             className="form-control"
             placeholder="Search products by name or SKU..."
@@ -374,16 +369,79 @@ const StockManagement: React.FC = () => {
         </div>
       </div>
 
+      <style>{`
+        @keyframes skeleton-pulse {
+          0% { background-color: var(--bg3, #f1f5f9); opacity: 0.6; }
+          50% { background-color: var(--border, #e2e8f0); opacity: 1; }
+          100% { background-color: var(--bg3, #f1f5f9); opacity: 0.6; }
+        }
+        .skeleton-block {
+          animation: skeleton-pulse 1.5s infinite ease-in-out;
+          border-radius: 6px;
+          display: inline-block;
+        }
+      `}</style>
+
       {/* Products Table */}
-      {loading ? (
-        <div className="loading-page"><div className="spinner" /></div>
+      {loading && products.length === 0 ? (
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="table-wrapper" style={{ border: 'none' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Image</th>
+                  <th>Product</th>
+                  <th>SKU</th>
+                  <th>Category</th>
+                  <th>Unit</th>
+                  <th>Price / MRP</th>
+                  <th>Stock</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: 5 }).map((_, idx) => (
+                  <tr key={idx}>
+                    <td>
+                      <div className="skeleton-block" style={{ width: 40, height: 40, borderRadius: 8 }} />
+                    </td>
+                    <td>
+                      <div className="skeleton-block" style={{ width: '80%', height: 16 }} />
+                    </td>
+                    <td>
+                      <div className="skeleton-block" style={{ width: 60, height: 14 }} />
+                    </td>
+                    <td>
+                      <div className="skeleton-block" style={{ width: 80, height: 14 }} />
+                    </td>
+                    <td>
+                      <div className="skeleton-block" style={{ width: 50, height: 16 }} />
+                    </td>
+                    <td>
+                      <div className="skeleton-block" style={{ width: 75, height: 16 }} />
+                    </td>
+                    <td>
+                      <div className="skeleton-block" style={{ width: 65, height: 20, borderRadius: 12 }} />
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <div className="skeleton-block" style={{ width: 60, height: 32, borderRadius: 8 }} />
+                        <div className="skeleton-block" style={{ width: 32, height: 32, borderRadius: 8 }} />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : products.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon">📦</div>
           <div className="empty-title">No products found</div>
         </div>
       ) : (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="card" style={{ padding: 0, overflow: 'hidden', opacity: loading || refreshing ? 0.6 : 1, transition: 'opacity 0.15s ease' }}>
           <div className="table-wrapper" style={{ border: 'none' }}>
             <table>
               <thead>
@@ -444,21 +502,38 @@ const StockManagement: React.FC = () => {
                         {(() => {
                           const totalPcs = Number(p.stock?.availableQty) || 0;
                           const stockColor = totalPcs <= 0 ? 'var(--danger)' : totalPcs < 5 ? 'var(--warning)' : 'var(--success)';
-                          const parts = formatStock(p);
+                          const parts = formatStock(p, false);
+                          const physicalParts = formatStock(p, true);
+                          const physicalTotal = Number(p.physicalStock?.availableQty) || 0;
                           return (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                              {parts.map((part, i) => (
-                                <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
-                                  <span style={{ fontWeight: 800, fontSize: '0.95rem', color: stockColor, fontFamily: 'var(--font-mono)' }}>
-                                    {part.val}
-                                  </span>
-                                  <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase' }}>
-                                    {part.label}
-                                  </span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span style={{ fontSize: '0.62rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.02em' }}>Available:</span>
+                                {parts.map((part, i) => (
+                                  <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
+                                    <span style={{ fontWeight: 800, fontSize: '0.95rem', color: stockColor, fontFamily: 'var(--font-mono)' }}>
+                                      {part.val}
+                                    </span>
+                                    <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase' }}>
+                                      {part.label}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                              {physicalTotal !== totalPcs && (
+                                <div style={{ display: 'flex', flexDirection: 'column', borderTop: '1px dashed var(--border-soft)', paddingTop: 2, marginTop: 2 }}>
+                                  <span style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase' }}>Physical:</span>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                                    {physicalParts.map((part, i) => (
+                                      <span key={i} style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                                        {part.val} {part.label}
+                                      </span>
+                                    ))}
+                                  </div>
                                 </div>
-                              ))}
-                              {totalPcs <= 0 && <span className="badge status-pending" style={{ fontSize: '0.58rem', marginTop: 1 }}>Out</span>}
-                              {totalPcs > 0 && totalPcs < 5 && <span className="badge status-partial" style={{ fontSize: '0.58rem', marginTop: 1 }}>Low</span>}
+                              )}
+                              {totalPcs <= 0 && <span className="badge status-pending" style={{ fontSize: '0.58rem', marginTop: 1, width: 'fit-content' }}>Out</span>}
+                              {totalPcs > 0 && totalPcs < 5 && <span className="badge status-partial" style={{ fontSize: '0.58rem', marginTop: 1, width: 'fit-content' }}>Low</span>}
                             </div>
                           );
                         })()}

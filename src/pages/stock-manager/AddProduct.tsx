@@ -51,12 +51,17 @@ const AddProduct: React.FC = () => {
         setBulkTiers(p.bulkPricingTiers.map((t: any) => ({ minQty: String(t.minQty), unit: t.unit || 'inner', price: String(t.price) })));
       }
       if (p.imageUrl) setPreview(p.imageUrl);
-      if (p.stock?.availableQty !== undefined) {
-        const qty = p.stock.availableQty;
+      const targetStock = p.physicalStock || p.stock;
+      const freeQty = p.stock?.availableQty || 0;
+      const physQty = targetStock?.availableQty || 0;
+      setPendingPcs(Math.max(0, physQty - freeQty));
+
+      if (targetStock?.availableQty !== undefined) {
+        const qty = targetStock.availableQty;
         setCurrentStock(qty);
-        const c = p.stock.stockCartons ?? 0;
-        const inn = p.stock.stockInners ?? 0;
-        const l = p.stock.stockLoose ?? 0;
+        const c = targetStock.stockCartons ?? 0;
+        const inn = targetStock.stockInners ?? 0;
+        const l = targetStock.stockLoose ?? 0;
         if (qty > 0 && c === 0 && inn === 0 && l === 0) {
           // old record — compute greedy breakdown
           const ppc = Number(p.innerPerCarton ?? 0);
@@ -96,6 +101,9 @@ const AddProduct: React.FC = () => {
   const [stockCartons, setStockCartons] = useState(0);
   const [stockInners, setStockInners] = useState(0);
   const [stockLoose, setStockLoose] = useState(0);
+  const [pendingPcs, setPendingPcs] = useState(0);
+  const [inwardQty, setInwardQty] = useState('');
+  const [stockOp, setStockOp] = useState<'add' | 'remove'>('add');
 
   useEffect(() => {
     const ppc = Number(form.innerPerCarton) || 0;
@@ -136,7 +144,8 @@ const AddProduct: React.FC = () => {
       if (!isEdit) fd.append('initialQty', form.initialQty);
       fd.append('pcsPerInner', form.pcsPerInner || '0');
       fd.append('innerPerCarton', form.innerPerCarton || '0');
-      fd.append('gstRate', '0');
+      // New products default to 5% GST; on edit, omit so the stored rate is preserved
+      if (!isEdit) fd.append('gstRate', '5');
       fd.append('wholesalerPrice', form.wholesalerPrice || '0');
       fd.append('wholesalerMrp', form.wholesalerMrp || '0');
       const validTiers = bulkTiers.filter(t => t.minQty && t.price).map(t => ({ minQty: Number(t.minQty), unit: t.unit, price: Number(t.price) }));
@@ -147,22 +156,31 @@ const AddProduct: React.FC = () => {
       if (file) fd.append('image', file);
 
       if (isEdit) {
+        const totalPcsAdded = Number(inwardQty) || 0;
+        if (totalPcsAdded > 0 && stockOp === 'remove' && totalPcsAdded > (Number(currentStock) || 0)) {
+          toast.error(`Cannot remove more than current physical stock of ${(Number(currentStock) || 0)} Pcs`);
+          setLoading(false);
+          return;
+        }
+
         await api.put(`/products/${id}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-        const ppc = Number(form.innerPerCarton) || 0;
-        const ppi = Number(form.pcsPerInner) || 0;
-        const pcsPerCarton = ppi > 0 ? (ppc * ppi) : ppc;
-        const newQty = (stockCartons * pcsPerCarton) + (stockInners * ppi) + stockLoose;
-        await api.patch(`/products/${id}/stock`, {
-          qty: newQty,
-          operation: 'set',
-          cartons: stockCartons,
-          inners: stockInners,
-          loose: stockLoose,
-        });
-        setCurrentStock(newQty);
+        if (totalPcsAdded > 0) {
+          const newLoose = stockOp === 'add'
+            ? (Number(currentStock) || 0) + totalPcsAdded
+            : Math.max(0, (Number(currentStock) || 0) - totalPcsAdded);
+
+          await api.patch(`/products/${id}/stock`, {
+            qty: totalPcsAdded,
+            operation: stockOp,
+            cartons: 0,
+            inners: 0,
+            loose: newLoose,
+          });
+          setCurrentStock(newLoose);
+        }
         toast.success('Product updated successfully!');
         setSuccess(true);
-        setTimeout(() => navigate('/stock-manager/stock'), 1500);
+        setTimeout(() => navigate('/admin/stock'), 1500);
       } else {
         await api.post('/products', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
         setSuccess(true);
@@ -206,16 +224,17 @@ const AddProduct: React.FC = () => {
             {isEdit ? 'Update product details and pricing' : 'Add new product with stock details and pricing'}
           </p>
         </div>
-        <button className="btn btn-secondary" onClick={() => navigate('/stock-manager/stock')}>
+        <button className="btn btn-secondary" onClick={() => navigate('/admin/stock')}>
           <ArrowLeft size={16} /> Back to Products
         </button>
       </div>
 
       <form onSubmit={handleSubmit}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: '1.5rem' }}>
-          <div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '1.5rem', alignItems: 'start' }}>
+          {/* Left Column: Product Info & Pricing & Image */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             {/* Product Details */}
-            <div className="card" style={{ marginBottom: '1.5rem' }}>
+            <div className="card">
               <div className="card-header">
                 <h3 className="card-title">Product Details</h3>
               </div>
@@ -242,110 +261,10 @@ const AddProduct: React.FC = () => {
                   {categories.map(c => <option key={c._id} value={c.name}>{c.name}</option>)}
                 </select>
               </div>
-
-              {/* Packaging Hierarchy */}
-              <div style={{ padding: '0.85rem 1rem', background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)', borderRadius: 'var(--radius-sm)', marginBottom: '1rem' }}>
-                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '0.65rem' }}>📦 Packaging Hierarchy (Carton / Inner / Pcs)</div>
-                <div className="form-grid">
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Pcs Per Inner <span style={{ fontWeight: 400, color: 'var(--text-dim)', fontSize: '0.72rem' }}>(0 = no inner)</span></label>
-                    <input
-                      className="form-control"
-                      type="number" min="0"
-                      value={form.pcsPerInner}
-                      onChange={e => setForm({ ...form, pcsPerInner: e.target.value })}
-                      placeholder="0 if no inner"
-                    />
-                    <p style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: 3 }}>1 Inner = ? Pcs</p>
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Pcs Per Carton <span style={{ fontWeight: 400, color: 'var(--text-dim)', fontSize: '0.72rem' }}>(0 = no carton)</span></label>
-                    <input
-                      className="form-control"
-                      type="number" min="0"
-                      value={form.innerPerCarton}
-                      onChange={e => setForm({ ...form, innerPerCarton: e.target.value })}
-                      placeholder="0 if no carton"
-                    />
-                    <p style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: 3 }}>1 Carton = ? Pcs</p>
-                  </div>
-                </div>
-                {(Number(form.pcsPerInner) > 1 || Number(form.innerPerCarton) > 1) && (
-                  <div style={{ marginTop: '0.6rem', display: 'flex', gap: '1.5rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--success)' }}>
-                    <span>✓ 1 Carton = {form.innerPerCarton} pcs</span>
-                    <span>✓ 1 Inner = {form.pcsPerInner} pcs</span>
-                  </div>
-                )}
-              </div>
-              {(() => {
-                const ppc = Number(form.innerPerCarton) || 0;
-                const ppi = Number(form.pcsPerInner) || 0;
-                const pcsPerCarton = ppi > 0 ? (ppc * ppi) : ppc;
-                const hasCarton = ppc > 0;
-                const hasInner = ppi > 0;
-                const total = (stockCartons * pcsPerCarton) + (stockInners * ppi) + stockLoose;
-                const boxInput: React.CSSProperties = { width: '100%', background: 'white', border: '1px solid var(--border)', borderRadius: 10, padding: '0.6rem 0.85rem', fontSize: '1rem', fontWeight: 700, color: 'var(--text)', outline: 'none', fontFamily: 'var(--font-mono)', textAlign: 'center', boxSizing: 'border-box' };
-                return (
-                  <div>
-                    <label className="form-label">{isEdit ? 'Stock Quantity' : 'Initial Stock Qty'}</label>
-                    <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                      {hasCarton && (
-                        <div style={{ flex: 1, minWidth: 90 }}>
-                          <div style={{ background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.18)', borderRadius: 12, padding: '0.75rem' }}>
-                            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>📦 Carton</div>
-                            <input type="number" min="0" style={boxInput} placeholder="0"
-                              value={stockCartons || ''}
-                              onChange={e => setStockCartons(Math.max(0, Number(e.target.value) || 0))}
-                              disabled={isEdit}
-                            />
-                            <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginTop: '0.3rem', textAlign: 'center' }}>1 Carton = {ppc} Pcs</div>
-                          </div>
-                        </div>
-                      )}
-                      {hasInner && (
-                        <div style={{ flex: 1, minWidth: 90 }}>
-                          <div style={{ background: 'rgba(6,182,212,0.07)', border: '1px solid rgba(6,182,212,0.18)', borderRadius: 12, padding: '0.75rem' }}>
-                            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#06B6D4', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>🗂 Inner</div>
-                            <input type="number" min="0" style={boxInput} placeholder="0"
-                              value={stockInners || ''}
-                              onChange={e => setStockInners(Math.max(0, Number(e.target.value) || 0))}
-                              disabled={isEdit}
-                            />
-                            <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginTop: '0.3rem', textAlign: 'center' }}>1 Inner = {ppi} Pcs</div>
-                          </div>
-                        </div>
-                      )}
-                      <div style={{ flex: 1, minWidth: 90 }}>
-                        <div style={{ background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.18)', borderRadius: 12, padding: '0.75rem' }}>
-                          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#10B981', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>🔩 Loose Pcs</div>
-                          <input type="number" min="0" style={boxInput} placeholder="0"
-                            value={stockLoose || ''}
-                            onChange={e => setStockLoose(Math.max(0, Number(e.target.value) || 0))}
-                            disabled={isEdit}
-                          />
-                          <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginTop: '0.3rem', textAlign: 'center' }}>Individual pieces</div>
-                        </div>
-                      </div>
-                    </div>
-                    {total > 0 && (
-                      <div style={{ marginTop: '0.6rem', padding: '0.6rem 1rem', background: 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(6,182,212,0.06))', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                          {[hasCarton && stockCartons > 0 && `${stockCartons} × ${ppc}`, hasInner && stockInners > 0 && `${stockInners} × ${ppi}`, stockLoose > 0 && `${stockLoose}`].filter(Boolean).join(' + ')}
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>Total</span>
-                          <span style={{ fontSize: '1.35rem', fontWeight: 800, color: '#10B981', fontFamily: 'var(--font-display)', letterSpacing: '-0.03em' }}>{total.toLocaleString()}</span>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Pcs</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
             </div>
 
-            {/* Pricing Card — open to all */}
-            <div className="card" style={{ marginBottom: '1.5rem' }}>
+            {/* Pricing Card */}
+            <div className="card">
               <div className="card-header">
                 <h3 className="card-title">Pricing</h3>
               </div>
@@ -386,7 +305,7 @@ const AddProduct: React.FC = () => {
               </div>
 
               {/* Bulk Pricing Tiers */}
-              <div style={{ padding: '0.75rem 0.85rem', background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 10, marginBottom: '0.85rem' }}>
+              <div style={{ padding: '0.75rem 0.85rem', background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
                   <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     📦 Bulk Pricing <span style={{ fontWeight: 500, textTransform: 'none', fontSize: '0.68rem', color: 'var(--text-dim)' }}>(Optional — max 3 tiers)</span>
@@ -453,20 +372,15 @@ const AddProduct: React.FC = () => {
                   );
                 })}
               </div>
-
-              {/* Retailer pricing removed */}
             </div>
 
-            <button type="submit" className="btn btn-primary btn-lg" disabled={loading} style={{ width: '100%', justifyContent: 'center', marginTop: '1.5rem' }}>
-              {loading ? <><Loader size={18} style={{ animation: 'spin 1s linear infinite' }} /> {isEdit ? 'Saving...' : 'Uploading...'}</> : <><Save size={18} /> {isEdit ? 'Save Changes' : 'Save Product'}</>}
-            </button>
-          </div>
-
-          {/* Image Upload */}
-          <div>
-            <div className="card" style={{ position: 'sticky', top: '1rem' }}>
+            {/* Product Image */}
+            <div className="card">
               <div className="card-header">
-                <h3 className="card-title"><ImageIcon size={16} style={{ marginRight: 8, verticalAlign: 'middle' }} />Product Image <span style={{ fontSize: '0.7rem', fontWeight: 400, color: 'var(--text-dim)', marginLeft: 4 }}>(Optional)</span></h3>
+                <h3 className="card-title">
+                  <ImageIcon size={16} style={{ marginRight: 8, verticalAlign: 'middle' }} />
+                  Product Image <span style={{ fontSize: '0.7rem', fontWeight: 400, color: 'var(--text-dim)', marginLeft: 4 }}>(Optional)</span>
+                </h3>
               </div>
               <div
                 className={`image-upload-zone ${dragOver ? 'drag-over' : ''}`}
@@ -496,6 +410,149 @@ const AddProduct: React.FC = () => {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Right Column: Stock Details & Save Button */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', position: 'sticky', top: '1rem' }}>
+            <div className="card">
+              <div className="card-header">
+                <h3 className="card-title">Stock & Inventory Details</h3>
+              </div>
+
+              {/* Packaging Hierarchy */}
+              <div style={{ padding: '0.85rem 1rem', background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)', borderRadius: 'var(--radius-sm)', marginBottom: '1.25rem' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '0.65rem' }}>📦 Packaging Hierarchy (Carton / Inner / Pcs)</div>
+                <div className="form-grid">
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">Pcs Per Inner <span style={{ fontWeight: 400, color: 'var(--text-dim)', fontSize: '0.72rem' }}>(0 = no inner)</span></label>
+                    <input
+                      className="form-control"
+                      type="number" min="0"
+                      value={form.pcsPerInner}
+                      onChange={e => setForm({ ...form, pcsPerInner: e.target.value })}
+                      placeholder="0 if no inner"
+                    />
+                    <p style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: 3 }}>1 Inner = ? Pcs</p>
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">Pcs Per Carton <span style={{ fontWeight: 400, color: 'var(--text-dim)', fontSize: '0.72rem' }}>(0 = no carton)</span></label>
+                    <input
+                      className="form-control"
+                      type="number" min="0"
+                      value={form.innerPerCarton}
+                      onChange={e => setForm({ ...form, innerPerCarton: e.target.value })}
+                      placeholder="0 if no carton"
+                    />
+                    <p style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: 3 }}>1 Carton = ? Pcs</p>
+                  </div>
+                </div>
+                {(Number(form.pcsPerInner) > 1 || Number(form.innerPerCarton) > 1) && (
+                  <div style={{ marginTop: '0.6rem', display: 'flex', gap: '1.5rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--success)' }}>
+                    <span>✓ 1 Carton = {form.innerPerCarton} pcs</span>
+                    <span>✓ 1 Inner = {form.pcsPerInner} pcs</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Stock Quantity */}
+              {(() => {
+                const total = Number(currentStock) || 0;
+                const available = Math.max(0, total - pendingPcs);
+                
+                const changePcs = Number(inwardQty) || 0;
+                const newTotal = stockOp === 'add' ? total + changePcs : Math.max(0, total - changePcs);
+                const newAvailable = Math.max(0, newTotal - pendingPcs);
+
+                const boxInput: React.CSSProperties = { width: '100%', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: '0.6rem 0.85rem', fontSize: '1rem', fontWeight: 700, color: 'var(--text)', outline: 'none', fontFamily: 'var(--font-mono)', textAlign: 'center', boxSizing: 'border-box' };
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    <div>
+                      <label className="form-label">{isEdit ? 'Stock Adjustment Operation' : 'Initial Stock Qty (in Pcs)'}</label>
+                      {isEdit && (
+                        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                          <button
+                            type="button"
+                            onClick={() => setStockOp('add')}
+                            style={{
+                              flex: 1,
+                              padding: '0.5rem',
+                              borderRadius: 8,
+                              fontWeight: 700,
+                              fontSize: '0.85rem',
+                              border: stockOp === 'add' ? '2px solid var(--success)' : '1px solid var(--border)',
+                              background: stockOp === 'add' ? 'rgba(16,185,129,0.1)' : 'var(--bg3)',
+                              color: stockOp === 'add' ? '#059669' : 'var(--text-muted)',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            ➕ Add Stock (Inward)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setStockOp('remove')}
+                            style={{
+                              flex: 1,
+                              padding: '0.5rem',
+                              borderRadius: 8,
+                              fontWeight: 700,
+                              fontSize: '0.85rem',
+                              border: stockOp === 'remove' ? '2px solid var(--danger)' : '1px solid var(--border)',
+                              background: stockOp === 'remove' ? 'rgba(239,68,68,0.1)' : 'var(--bg3)',
+                              color: stockOp === 'remove' ? 'var(--danger)' : 'var(--text-muted)',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            ➖ Remove Stock (Outward)
+                          </button>
+                        </div>
+                      )}
+                      
+                      <div style={{ background: stockOp === 'add' ? 'rgba(16,185,129,0.07)' : 'rgba(239,68,68,0.07)', border: stockOp === 'add' ? '1px solid rgba(16,185,129,0.18)' : '1px solid rgba(239,68,68,0.18)', borderRadius: 12, padding: '0.75rem' }}>
+                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: stockOp === 'add' ? '#10B981' : 'var(--danger)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>
+                          {isEdit ? (stockOp === 'add' ? '🔩 Quantity to Add (Pcs)' : '🔩 Quantity to Remove (Pcs)') : '🔩 Total Pieces (Pcs)'}
+                        </div>
+                        {isEdit ? (
+                          <input type="number" min="0" style={boxInput} placeholder={stockOp === 'add' ? "Enter quantity to add..." : "Enter quantity to remove..."}
+                            value={inwardQty}
+                            onChange={e => setInwardQty(e.target.value)}
+                          />
+                        ) : (
+                          <input type="number" min="0" style={boxInput} placeholder="0"
+                            value={stockLoose || ''}
+                            onChange={e => setStockLoose(Math.max(0, Number(e.target.value) || 0))}
+                          />
+                        )}
+                        <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginTop: '0.3rem', textAlign: 'center' }}>
+                          {isEdit ? (stockOp === 'add' ? 'Enter quantity to ADD to current stock' : 'Enter quantity to REMOVE from current stock') : 'Individual pieces'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {isEdit && (
+                      <div style={{ padding: '0.75rem 1rem', background: 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(6,182,212,0.06))', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text)', fontWeight: 700 }}>Current Stock:</span>
+                          <span style={{ fontSize: '1.2rem', fontWeight: 800, color: total > 0 ? 'var(--primary)' : 'var(--danger)', fontFamily: 'var(--font-mono)' }}>{total.toLocaleString()} Pcs</span>
+                        </div>
+                        {changePcs > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--border-soft)', paddingTop: 6, marginTop: 2 }}>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text)', fontWeight: 700 }}>
+                              {stockOp === 'add' ? 'New Stock:' : 'New Stock (after removal):'}
+                            </span>
+                            <span style={{ fontSize: '1.2rem', fontWeight: 800, color: newTotal > 0 ? 'var(--primary)' : 'var(--danger)', fontFamily: 'var(--font-mono)' }}>{newTotal.toLocaleString()} Pcs</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Save Button */}
+            <button type="submit" className="btn btn-primary btn-lg" disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
+              {loading ? <><Loader size={18} style={{ animation: 'spin 1s linear infinite' }} /> {isEdit ? 'Saving...' : 'Uploading...'}</> : <><Save size={18} /> {isEdit ? 'Save Changes' : 'Save Product'}</>}
+            </button>
           </div>
         </div>
       </form>

@@ -42,26 +42,31 @@ const StockInward: React.FC = () => {
   };
 
   useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      searchProducts(searchQuery, page);
-    }, 300);
+    let active = true;
 
-    return () => clearTimeout(delayDebounceFn);
+    const loadData = async () => {
+      setIsSearching(true);
+      try {
+        const { data } = await api.get('/products', { params: { search: searchQuery, limit, page } });
+        if (active) {
+          setSearchResults(data.products);
+          setTotalPages(Math.ceil(data.total / limit) || 1);
+          setTotalProducts(data.total || 0);
+        }
+      } catch (err) {
+        if (active) toast.error('Search failed');
+      } finally {
+        if (active) setIsSearching(false);
+      }
+    };
+
+    const delayDebounceFn = setTimeout(loadData, 100);
+
+    return () => {
+      active = false;
+      clearTimeout(delayDebounceFn);
+    };
   }, [searchQuery, page]);
-
-  const searchProducts = async (query: string, pageNum: number) => {
-    setIsSearching(true);
-    try {
-      const { data } = await api.get('/products', { params: { search: query, limit, page: pageNum } });
-      setSearchResults(data.products);
-      setTotalPages(Math.ceil(data.total / limit) || 1);
-      setTotalProducts(data.total || 0);
-    } catch (err) {
-      toast.error('Search failed');
-    } finally {
-      setIsSearching(false);
-    }
-  };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
@@ -346,35 +351,16 @@ const StockInward: React.FC = () => {
 
               <form onSubmit={handleInward}>
                 <div style={{ marginBottom: '1.5rem' }}>
-                  <label className="form-label">Inward Quantity</label>
+                  <label className="form-label">Inward Quantity (Pieces)</label>
                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                     
-                    <div style={{ flex: 1, minWidth: 90 }}>
-                      <div style={{ background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.18)', borderRadius: 12, padding: '0.75rem' }}>
-                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>📦 Cartons</div>
-                        <input type="number" min="0" placeholder="0"
-                          value={cartons} onChange={e => setCartons(e.target.value)}
-                          style={{ width: '100%', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '0.6rem 0.85rem', fontSize: '1rem', fontWeight: 700, color: 'var(--text)', outline: 'none', fontFamily: 'var(--font-mono)', textAlign: 'center', boxSizing: 'border-box' }}
-                        />
-                      </div>
-                    </div>
-                    
-                    <div style={{ flex: 1, minWidth: 90 }}>
-                      <div style={{ background: 'rgba(6,182,212,0.07)', border: '1px solid rgba(6,182,212,0.18)', borderRadius: 12, padding: '0.75rem' }}>
-                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#06B6D4', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>🗂 Inners</div>
-                        <input type="number" min="0" placeholder="0"
-                          value={inners} onChange={e => setInners(e.target.value)}
-                          style={{ width: '100%', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '0.6rem 0.85rem', fontSize: '1rem', fontWeight: 700, color: 'var(--text)', outline: 'none', fontFamily: 'var(--font-mono)', textAlign: 'center', boxSizing: 'border-box' }}
-                        />
-                      </div>
-                    </div>
-                    
-                    <div style={{ flex: 1, minWidth: 90 }}>
+                    <div style={{ flex: 1, minWidth: 200 }}>
                       <div style={{ background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.18)', borderRadius: 12, padding: '0.75rem' }}>
-                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#10B981', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>🔩 Loose Pcs</div>
-                        <input type="number" min="0" placeholder="0"
+                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#10B981', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>🔩 Quantity in Pieces</div>
+                        <input type="number" min="1" placeholder="Enter pieces quantity..."
                           value={loose} onChange={e => setLoose(e.target.value)}
-                          style={{ width: '100%', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '0.6rem 0.85rem', fontSize: '1rem', fontWeight: 700, color: 'var(--text)', outline: 'none', fontFamily: 'var(--font-mono)', textAlign: 'center', boxSizing: 'border-box' }}
+                          style={{ width: '100%', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '0.6rem 0.85rem', fontSize: '1rem', fontWeight: 700, color: 'var(--text)', outline: 'none', fontFamily: 'var(--font-mono)', boxSizing: 'border-box' }}
+                          required
                         />
                       </div>
                     </div>
