@@ -271,10 +271,17 @@ const StockManagement: React.FC = () => {
     } finally { setSubmitting(false); }
   };
 
-  const formatStock = (product: any, usePhysical: boolean = false) => {
-    const targetStock = usePhysical ? product.physicalStock : product.stock;
-    const totalPcs = Number(targetStock?.availableQty) || 0;
-    return [{ val: totalPcs, label: 'pcs' }];
+  // STOCK IS PURE PCS: availableQty is the single number shown everywhere
+  // (same logic as Admin portal). Muted breakdown is display-only, derived from pcs.
+  const stockBreakdown = (product: any) => {
+    const totalPcs = Number(product.stock?.availableQty) || 0;
+    const ppi = Number(product.pcsPerInner) || 0;
+    if (ppi > 1 && totalPcs > 0) {
+      const inners = Math.floor(totalPcs / ppi);
+      const loose = totalPcs % ppi;
+      if (inners > 0) return `= ${inners} inr${loose > 0 ? ` + ${loose} pcs` : ''}`;
+    }
+    return '';
   };
 
   const lowStock = products.filter(p => (p.stock?.availableQty || 0) > 0 && (p.stock?.availableQty || 0) < 5).length;
@@ -502,35 +509,21 @@ const StockManagement: React.FC = () => {
                         {(() => {
                           const totalPcs = Number(p.stock?.availableQty) || 0;
                           const stockColor = totalPcs <= 0 ? 'var(--danger)' : totalPcs < 5 ? 'var(--warning)' : 'var(--success)';
-                          const parts = formatStock(p, false);
-                          const physicalParts = formatStock(p, true);
-                          const physicalTotal = Number(p.physicalStock?.availableQty) || 0;
+                          const breakdown = stockBreakdown(p);
                           return (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <span style={{ fontSize: '0.62rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.02em' }}>Available:</span>
-                                {parts.map((part, i) => (
-                                  <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
-                                    <span style={{ fontWeight: 800, fontSize: '0.95rem', color: stockColor, fontFamily: 'var(--font-mono)' }}>
-                                      {part.val}
-                                    </span>
-                                    <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase' }}>
-                                      {part.label}
-                                    </span>
-                                  </div>
-                                ))}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
+                                <span style={{ fontWeight: 800, fontSize: '0.95rem', color: stockColor, fontFamily: 'var(--font-mono)' }}>
+                                  {totalPcs}
+                                </span>
+                                <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase' }}>
+                                  Pcs
+                                </span>
                               </div>
-                              {physicalTotal !== totalPcs && (
-                                <div style={{ display: 'flex', flexDirection: 'column', borderTop: '1px dashed var(--border-soft)', paddingTop: 2, marginTop: 2 }}>
-                                  <span style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase' }}>Physical:</span>
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
-                                    {physicalParts.map((part, i) => (
-                                      <span key={i} style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                                        {part.val} {part.label}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </div>
+                              {breakdown && (
+                                <span style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
+                                  {breakdown}
+                                </span>
                               )}
                               {totalPcs <= 0 && <span className="badge status-pending" style={{ fontSize: '0.58rem', marginTop: 1, width: 'fit-content' }}>Out</span>}
                               {totalPcs > 0 && totalPcs < 5 && <span className="badge status-partial" style={{ fontSize: '0.58rem', marginTop: 1, width: 'fit-content' }}>Low</span>}

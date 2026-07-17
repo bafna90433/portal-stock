@@ -16,6 +16,7 @@ const AddProduct: React.FC = () => {
   const [success, setSuccess] = useState(false);
   const [categories, setCategories] = useState<{ _id: string; name: string }[]>([]);
   const [currentStock, setCurrentStock] = useState<number | null>(null);
+  const [freeStock, setFreeStock] = useState(0);
 
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -51,10 +52,12 @@ const AddProduct: React.FC = () => {
         setBulkTiers(p.bulkPricingTiers.map((t: any) => ({ minQty: String(t.minQty), unit: t.unit || 'inner', price: String(t.price) })));
       }
       if (p.imageUrl) setPreview(p.imageUrl);
-      const targetStock = p.physicalStock || p.stock;
+      // Stock Management list and Edit Product must show the same authoritative
+      // free/current quantity. Reservations belong to orders and must not be
+      // added back into the editable Current Stock figure.
+      const targetStock = p.stock;
       const freeQty = p.stock?.availableQty || 0;
-      const physQty = targetStock?.availableQty || 0;
-      setPendingPcs(Math.max(0, physQty - freeQty));
+      setFreeStock(freeQty);
 
       if (targetStock?.availableQty !== undefined) {
         const qty = targetStock.availableQty;
@@ -101,7 +104,6 @@ const AddProduct: React.FC = () => {
   const [stockCartons, setStockCartons] = useState(0);
   const [stockInners, setStockInners] = useState(0);
   const [stockLoose, setStockLoose] = useState(0);
-  const [pendingPcs, setPendingPcs] = useState(0);
   const [inwardQty, setInwardQty] = useState('');
   const [stockOp, setStockOp] = useState<'add' | 'remove'>('add');
 
@@ -157,8 +159,8 @@ const AddProduct: React.FC = () => {
 
       if (isEdit) {
         const totalPcsAdded = Number(inwardQty) || 0;
-        if (totalPcsAdded > 0 && stockOp === 'remove' && totalPcsAdded > (Number(currentStock) || 0)) {
-          toast.error(`Cannot remove more than current physical stock of ${(Number(currentStock) || 0)} Pcs`);
+        if (totalPcsAdded > 0 && stockOp === 'remove' && totalPcsAdded > freeStock) {
+          toast.error(`Only ${freeStock} free Pcs can be removed. Reserved stock must be released from its order first.`);
           setLoading(false);
           return;
         }
@@ -177,6 +179,7 @@ const AddProduct: React.FC = () => {
             loose: newLoose,
           });
           setCurrentStock(newLoose);
+          setFreeStock(stockOp === 'add' ? freeStock + totalPcsAdded : freeStock - totalPcsAdded);
         }
         toast.success('Product updated successfully!');
         setSuccess(true);
@@ -457,11 +460,9 @@ const AddProduct: React.FC = () => {
               {/* Stock Quantity */}
               {(() => {
                 const total = Number(currentStock) || 0;
-                const available = Math.max(0, total - pendingPcs);
-                
+
                 const changePcs = Number(inwardQty) || 0;
                 const newTotal = stockOp === 'add' ? total + changePcs : Math.max(0, total - changePcs);
-                const newAvailable = Math.max(0, newTotal - pendingPcs);
 
                 const boxInput: React.CSSProperties = { width: '100%', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: '0.6rem 0.85rem', fontSize: '1rem', fontWeight: 700, color: 'var(--text)', outline: 'none', fontFamily: 'var(--font-mono)', textAlign: 'center', boxSizing: 'border-box' };
                 return (
@@ -537,7 +538,7 @@ const AddProduct: React.FC = () => {
                         {changePcs > 0 && (
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--border-soft)', paddingTop: 6, marginTop: 2 }}>
                             <span style={{ fontSize: '0.8rem', color: 'var(--text)', fontWeight: 700 }}>
-                              {stockOp === 'add' ? 'New Stock:' : 'New Stock (after removal):'}
+                              {stockOp === 'add' ? 'New Current Stock:' : 'New Current Stock (after removal):'}
                             </span>
                             <span style={{ fontSize: '1.2rem', fontWeight: 800, color: newTotal > 0 ? 'var(--primary)' : 'var(--danger)', fontFamily: 'var(--font-mono)' }}>{newTotal.toLocaleString()} Pcs</span>
                           </div>
