@@ -496,11 +496,6 @@ const StockManagement: React.FC = () => {
                             {Number(p.wholesalerMrp) > 0 && (
                               <div style={{ fontSize: '0.68rem', color: '#D97706', fontWeight: 600 }}>MRP ₹{Number(p.wholesalerMrp).toFixed(2)}</div>
                             )}
-                            {(p.bulkPricingTiers?.length > 0) && (
-                              <div style={{ fontSize: '0.65rem', color: '#D97706', fontWeight: 700, background: 'rgba(245,158,11,0.1)', borderRadius: 4, padding: '2px 6px', marginTop: 4, display: 'inline-block' }}>
-                                🏷️ Bulk: Min {p.bulkPricingTiers.map((t: any) => `${t.minQty} ${t.unit || 'pcs'}`).join(' / ')}
-                              </div>
-                            )}
                           </div>
                         ) : <span style={{ color: 'var(--text-dim)', fontWeight: 500, fontSize: '0.78rem' }}>Not set</span>}
                       </td>

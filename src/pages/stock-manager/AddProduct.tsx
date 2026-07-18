@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Package, X, Save, Loader, ImageIcon, CheckCircle, Plus, ArrowLeft } from 'lucide-react';
+import { Package, X, Save, Loader, ImageIcon, CheckCircle, ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../api/axios';
 import { useAuthStore } from '../../store/authStore';
@@ -48,9 +48,6 @@ const AddProduct: React.FC = () => {
         pcsPerInner: String(p.pcsPerInner ?? 0),
         innerPerCarton: String(p.innerPerCarton ?? 0),
       });
-      if (p.bulkPricingTiers?.length) {
-        setBulkTiers(p.bulkPricingTiers.map((t: any) => ({ minQty: String(t.minQty), unit: t.unit || 'inner', price: String(t.price) })));
-      }
       if (p.imageUrl) setPreview(p.imageUrl);
       // Stock Management list and Edit Product must show the same authoritative
       // free/current quantity. Reservations belong to orders and must not be
@@ -100,7 +97,6 @@ const AddProduct: React.FC = () => {
     pcsPerInner: '0',
     innerPerCarton: '0',
   });
-  const [bulkTiers, setBulkTiers] = useState<{ minQty: string; unit: 'pcs' | 'inner' | 'carton'; price: string }[]>([]);
   const [stockCartons, setStockCartons] = useState(0);
   const [stockInners, setStockInners] = useState(0);
   const [stockLoose, setStockLoose] = useState(0);
@@ -150,8 +146,6 @@ const AddProduct: React.FC = () => {
       if (!isEdit) fd.append('gstRate', '5');
       fd.append('wholesalerPrice', form.wholesalerPrice || '0');
       fd.append('wholesalerMrp', form.wholesalerMrp || '0');
-      const validTiers = bulkTiers.filter(t => t.minQty && t.price).map(t => ({ minQty: Number(t.minQty), unit: t.unit, price: Number(t.price) }));
-      fd.append('bulkPricingTiers', JSON.stringify(validTiers));
       fd.append('retailerPrice', form.wholesalerPrice || '0');
       fd.append('retailerMrp', form.wholesalerMrp || '0');
       fd.append('pricePerUnit', form.wholesalerPrice || '0');
@@ -191,7 +185,6 @@ const AddProduct: React.FC = () => {
         setTimeout(() => {
           setSuccess(false);
           setForm({ name: '', sku: '', unit: 'pcs', wholesalerPrice: '', wholesalerMrp: '', retailerPrice: '0', retailerMrp: '0', category: categories[0]?.name || '', description: '', initialQty: '0', pcsPerInner: '0', innerPerCarton: '0' });
-          setBulkTiers([]);
           setStockCartons(0); setStockInners(0); setStockLoose(0);
           setPreview(null);
           setFile(null);
@@ -307,74 +300,6 @@ const AddProduct: React.FC = () => {
                 </div>
               </div>
 
-              {/* Bulk Pricing Tiers */}
-              <div style={{ padding: '0.75rem 0.85rem', background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    📦 Bulk Pricing <span style={{ fontWeight: 500, textTransform: 'none', fontSize: '0.68rem', color: 'var(--text-dim)' }}>(Optional — max 3 tiers)</span>
-                  </div>
-                  {bulkTiers.length < 3 && (
-                    <button type="button" onClick={() => setBulkTiers([...bulkTiers, { minQty: '', unit: 'inner', price: '' }])}
-                      style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', fontWeight: 700, color: '#D97706', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer' }}>
-                      <Plus size={12} /> Add Tier
-                    </button>
-                  )}
-                </div>
-                {bulkTiers.length === 0 && (
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textAlign: 'center', padding: '0.4rem 0' }}>
-                    Click "Add Tier" to set bulk discount pricing
-                  </div>
-                )}
-                {bulkTiers.map((tier, i) => {
-                  const ppi = Number(form.pcsPerInner) || 1;
-                  const ppc = Number(form.innerPerCarton) || 1;
-                  const totalPcs = tier.minQty
-                    ? tier.unit === 'inner' ? Number(tier.minQty) * ppi
-                    : tier.unit === 'carton' ? Number(tier.minQty) * ppc
-                    : Number(tier.minQty)
-                    : 0;
-                  return (
-                    <div key={i} style={{ marginBottom: i < bulkTiers.length - 1 ? '0.6rem' : 0 }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 1fr auto', gap: '0.6rem', alignItems: 'flex-end' }}>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label className="form-label" style={{ fontSize: '0.7rem' }}>Min Qty (Tier {i + 1})</label>
-                          <input className="form-control" type="number" min="1" placeholder="e.g. 10"
-                            value={tier.minQty}
-                            onChange={e => { const t = [...bulkTiers]; t[i].minQty = e.target.value; setBulkTiers(t); }}
-                            style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: '0.95rem' }} />
-                        </div>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label className="form-label" style={{ fontSize: '0.7rem' }}>Unit</label>
-                          <select className="form-control"
-                            value={tier.unit}
-                            onChange={e => { const t = [...bulkTiers]; t[i].unit = e.target.value as any; setBulkTiers(t); }}
-                            style={{ fontWeight: 700, fontSize: '0.9rem' }}>
-                            <option value="inner">Inner</option>
-                            <option value="carton">Carton</option>
-                            <option value="pcs">Pcs</option>
-                          </select>
-                        </div>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label className="form-label" style={{ fontSize: '0.7rem' }}>Bulk Price (₹)</label>
-                          <input className="form-control" type="number" min="0" step="0.01" placeholder="0.00"
-                            value={tier.price}
-                            onChange={e => { const t = [...bulkTiers]; t[i].price = e.target.value; setBulkTiers(t); }}
-                            style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: '0.95rem' }} />
-                        </div>
-                        <button type="button" onClick={() => setBulkTiers(bulkTiers.filter((_, j) => j !== i))}
-                          style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '0.5rem 0.6rem', cursor: 'pointer', color: 'var(--danger)', height: 38, display: 'flex', alignItems: 'center' }}>
-                          <X size={14} />
-                        </button>
-                      </div>
-                      {tier.minQty && totalPcs > 0 && (
-                        <div style={{ fontSize: '0.7rem', color: '#D97706', fontWeight: 600, marginTop: 4, paddingLeft: 2 }}>
-                          ✓ {tier.minQty} {tier.unit}{Number(tier.minQty) > 1 ? 's' : ''} = {totalPcs.toLocaleString()} Pcs
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
             </div>
 
             {/* Product Image */}
