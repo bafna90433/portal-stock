@@ -64,8 +64,8 @@ const StockManagement: React.FC = () => {
           p._id,
           p.sku || '',
           p.name || '',
-          p.wholesalerPrice ? String(p.wholesalerPrice) : '0',
-          p.wholesalerMrp ? String(p.wholesalerMrp) : '0',
+          p.pricePerUnit ? String(p.pricePerUnit) : '0',
+          p.mrp ? String(p.mrp) : '0',
           p.stock?.stockCartons ? String(p.stock.stockCartons) : '0',
           p.stock?.stockInners ? String(p.stock.stockInners) : '0',
           p.stock?.stockLoose ? String(p.stock.stockLoose) : '0',
@@ -138,8 +138,8 @@ const StockManagement: React.FC = () => {
             return;
           }
 
-          const currentSellingPrice = current.wholesalerPrice || 0;
-          const currentMrp = current.wholesalerMrp || 0;
+          const currentSellingPrice = current.pricePerUnit || 0;
+          const currentMrp = current.mrp || 0;
           const currentCartons = current.stock?.stockCartons || 0;
           const currentInners = current.stock?.stockInners || 0;
           const currentLoose = current.stock?.stockLoose || 0;
@@ -191,8 +191,8 @@ const StockManagement: React.FC = () => {
         .filter(item => !item.notFound)
         .map(item => ({
           productId: item.productId,
-          wholesalerPrice: item.newPrices.sellingPrice,
-          wholesalerMrp: item.newPrices.mrp,
+          pricePerUnit: item.newPrices.sellingPrice,
+          mrp: item.newPrices.mrp,
           cartons: item.newStock.cartons,
           inners: item.newStock.inners,
           loose: item.newStock.loose,
@@ -286,7 +286,7 @@ const StockManagement: React.FC = () => {
 
   const lowStock = products.filter(p => (p.stock?.availableQty || 0) > 0 && (p.stock?.availableQty || 0) < 5).length;
   const outOfStock = products.filter(p => (p.stock?.availableQty || 0) === 0).length;
-  const noPriceCount = products.filter(p => !p.wholesalerPrice && !p.retailerPrice).length;
+  const noPriceCount = products.filter(p => !p.pricePerUnit).length;
 
   const addProductLink = isStockMgr ? '/stock-manager/add-product' : '/admin/add-product';
 
@@ -297,7 +297,7 @@ const StockManagement: React.FC = () => {
           <h1 className="page-title">Stock Management</h1>
           <p className="page-subtitle">
             {isAdmin
-              ? 'Manage stock levels and set wholesaler / retailer pricing'
+              ? 'Manage stock levels and product pricing'
               : 'View stock levels — pricing is set by Admin'}
           </p>
         </div>
@@ -465,9 +465,8 @@ const StockManagement: React.FC = () => {
               </thead>
               <tbody>
                 {products.map(p => {
-                  const wp = Number(p.wholesalerPrice) || 0;
-                  const rp = Number(p.retailerPrice) || 0;
-                  const noPrice = wp === 0 && rp === 0;
+                  const price = Number(p.pricePerUnit) || 0;
+                  const noPrice = price === 0;
                   return (
                     <tr key={p._id}>
                       <td>
@@ -490,16 +489,15 @@ const StockManagement: React.FC = () => {
                         )}
                       </td>
                       <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem' }}>
-                        {wp > 0 ? (
+                        {price > 0 ? (
                           <div>
-                            <div style={{ fontWeight: 800, color: 'var(--primary)' }}>₹{wp.toFixed(2)}</div>
-                            {Number(p.wholesalerMrp) > 0 && (
-                              <div style={{ fontSize: '0.68rem', color: '#D97706', fontWeight: 600 }}>MRP ₹{Number(p.wholesalerMrp).toFixed(2)}</div>
+                            <div style={{ fontWeight: 800, color: 'var(--primary)' }}>₹{price.toFixed(2)}</div>
+                            {Number(p.mrp) > 0 && (
+                              <div style={{ fontSize: '0.68rem', color: '#D97706', fontWeight: 600 }}>MRP ₹{Number(p.mrp).toFixed(2)}</div>
                             )}
                           </div>
                         ) : <span style={{ color: 'var(--text-dim)', fontWeight: 500, fontSize: '0.78rem' }}>Not set</span>}
                       </td>
-                      {/* Retailer column removed */}
                       <td>
                         {(() => {
                           const totalPcs = Number(p.stock?.availableQty) || 0;

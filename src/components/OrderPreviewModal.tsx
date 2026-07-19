@@ -208,7 +208,6 @@ const OrderPreviewModal: React.FC<OrderPreviewModalProps> = ({ isOpen, onClose, 
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Customer Details</div>
                     <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       {order.customerName}
-                      {order.customerType && <span style={{ background: 'var(--bg3)', color: 'var(--text-dark)', padding: '2px 8px', borderRadius: 4, fontSize: '0.65rem', textTransform: 'uppercase', border: '1px solid var(--border)' }}>{order.customerType}</span>}
                     </div>
                   </div>
                   {order.customerAddress?.city && (
@@ -379,26 +378,6 @@ const OrderPreviewModal: React.FC<OrderPreviewModalProps> = ({ isOpen, onClose, 
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                             <span style={{ color: 'var(--text-dim)', fontWeight: 600 }}>Salesman: </span>
                             <span style={{ fontWeight: 700, color: 'var(--text)' }}>{order.salesmanName}</span>
-                          </div>
-                        )}
-                        {order.customerType && (
-                          <div style={{ fontSize: '0.75rem' }}>
-                            <span
-                              style={{
-                                display: 'inline-block',
-                                padding: '1px 8px',
-                                borderRadius: 20,
-                                fontWeight: 700,
-                                fontSize: '0.7rem',
-                                textTransform: 'capitalize',
-                                background: order.customerType === 'retailer'
-                                  ? 'rgba(99,102,241,0.12)' : 'rgba(16,185,129,0.12)',
-                                color: order.customerType === 'retailer' ? '#6366F1' : '#10B981',
-                                border: `1px solid ${order.customerType === 'retailer' ? 'rgba(99,102,241,0.3)' : 'rgba(16,185,129,0.3)'}`,
-                              }}
-                            >
-                              {order.customerType === 'retailer' ? '🏪 Retailer' : '🏭 Wholesaler'}
-                            </span>
                           </div>
                         )}
                       </div>

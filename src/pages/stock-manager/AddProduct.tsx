@@ -38,10 +38,8 @@ const AddProduct: React.FC = () => {
         name: p.name || '',
         sku: p.sku || '',
         unit: p.unit || 'pcs',
-        wholesalerPrice: p.wholesalerPrice ? String(p.wholesalerPrice) : '',
-        wholesalerMrp: p.wholesalerMrp ? String(p.wholesalerMrp) : '',
-        retailerPrice: '0',
-        retailerMrp: '0',
+        pricePerUnit: p.pricePerUnit ? String(p.pricePerUnit) : '',
+        mrp: p.mrp ? String(p.mrp) : '',
         category: p.category || '',
         description: p.description || '',
         initialQty: '0',
@@ -87,10 +85,8 @@ const AddProduct: React.FC = () => {
     name: '',
     sku: '',
     unit: 'pcs',
-    wholesalerPrice: '',
-    wholesalerMrp: '',
-    retailerPrice: '0',
-    retailerMrp: '0',
+    pricePerUnit: '',
+    mrp: '',
     category: '',
     description: '',
     initialQty: '0',
@@ -129,8 +125,8 @@ const AddProduct: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name || !form.sku) return toast.error('Product name and SKU are required');
-    if (!form.wholesalerPrice || Number(form.wholesalerPrice) <= 0) return toast.error('Wholesaler Price is required');
-    if (!form.wholesalerMrp || Number(form.wholesalerMrp) <= 0) return toast.error('Wholesaler MRP is required');
+    if (!form.pricePerUnit || Number(form.pricePerUnit) <= 0) return toast.error('Selling Price is required');
+    if (!form.mrp || Number(form.mrp) <= 0) return toast.error('MRP is required');
     setLoading(true);
     try {
       const fd = new FormData();
@@ -144,11 +140,8 @@ const AddProduct: React.FC = () => {
       fd.append('innerPerCarton', form.innerPerCarton || '0');
       // New products default to 5% GST; on edit, omit so the stored rate is preserved
       if (!isEdit) fd.append('gstRate', '5');
-      fd.append('wholesalerPrice', form.wholesalerPrice || '0');
-      fd.append('wholesalerMrp', form.wholesalerMrp || '0');
-      fd.append('retailerPrice', form.wholesalerPrice || '0');
-      fd.append('retailerMrp', form.wholesalerMrp || '0');
-      fd.append('pricePerUnit', form.wholesalerPrice || '0');
+      fd.append('pricePerUnit', form.pricePerUnit || '0');
+      fd.append('mrp', form.mrp || '0');
       if (file) fd.append('image', file);
 
       if (isEdit) {
@@ -184,7 +177,7 @@ const AddProduct: React.FC = () => {
         toast.success('Product added successfully!');
         setTimeout(() => {
           setSuccess(false);
-          setForm({ name: '', sku: '', unit: 'pcs', wholesalerPrice: '', wholesalerMrp: '', retailerPrice: '0', retailerMrp: '0', category: categories[0]?.name || '', description: '', initialQty: '0', pcsPerInner: '0', innerPerCarton: '0' });
+          setForm({ name: '', sku: '', unit: 'pcs', pricePerUnit: '', mrp: '', category: categories[0]?.name || '', description: '', initialQty: '0', pcsPerInner: '0', innerPerCarton: '0' });
           setStockCartons(0); setStockInners(0); setStockLoose(0);
           setPreview(null);
           setFile(null);
@@ -276,8 +269,8 @@ const AddProduct: React.FC = () => {
                     <input
                       className="form-control"
                       type="number" min="0.01" step="0.01"
-                      value={form.wholesalerPrice}
-                      onChange={e => setForm({ ...form, wholesalerPrice: e.target.value })}
+                      value={form.pricePerUnit}
+                      onChange={e => setForm({ ...form, pricePerUnit: e.target.value })}
                       placeholder="0.00"
                       required
                       style={{ fontSize: '1rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}
@@ -289,8 +282,8 @@ const AddProduct: React.FC = () => {
                     <input
                       className="form-control"
                       type="number" min="0.01" step="0.01"
-                      value={form.wholesalerMrp}
-                      onChange={e => setForm({ ...form, wholesalerMrp: e.target.value })}
+                      value={form.mrp}
+                      onChange={e => setForm({ ...form, mrp: e.target.value })}
                       placeholder="0.00"
                       required
                       style={{ fontSize: '1rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}
