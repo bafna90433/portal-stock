@@ -56,8 +56,9 @@ const StockManagement: React.FC = () => {
       toast.loading('Generating template...');
       const { data } = await api.get('/products?limit=5000');
       toast.dismiss();
+      // STOCK IS PURE PCS: single availableQty column, no carton/inner/loose bins.
       const csvRows = [
-        ['Product ID', 'SKU', 'Name', 'Selling Price', 'MRP', 'Cartons', 'Inners', 'Loose Pcs', 'Pcs Per Inner', 'Pcs Per Carton']
+        ['Product ID', 'SKU', 'Name', 'Selling Price', 'MRP', 'Stock (Pcs)', 'Pcs Per Inner', 'Pcs Per Carton']
       ];
       data.products.forEach((p: any) => {
         csvRows.push([
@@ -66,9 +67,7 @@ const StockManagement: React.FC = () => {
           p.name || '',
           p.pricePerUnit ? String(p.pricePerUnit) : '0',
           p.mrp ? String(p.mrp) : '0',
-          p.stock?.stockCartons ? String(p.stock.stockCartons) : '0',
-          p.stock?.stockInners ? String(p.stock.stockInners) : '0',
-          p.stock?.stockLoose ? String(p.stock.stockLoose) : '0',
+          p.stock?.availableQty ? String(p.stock.availableQty) : '0',
           p.pcsPerInner ? String(p.pcsPerInner) : '0',
           p.innerPerCarton ? String(p.innerPerCarton) : '0'
         ]);
@@ -118,9 +117,8 @@ const StockManagement: React.FC = () => {
           const name = row['Name'] || row['name'];
           const sellingPrice = Number(row['Selling Price'] || row['selling price'] || 0);
           const mrp = Number(row['MRP'] || row['mrp'] || 0);
-          const cartons = Number(row['Cartons'] || row['cartons'] || 0);
-          const inners = Number(row['Inners'] || row['inners'] || 0);
-          const loose = Number(row['Loose Pcs'] || row['Loose'] || row['loose pcs'] || row['loose'] || 0);
+          // STOCK IS PURE PCS: single stock column = availableQty
+          const stockPcs = Math.max(0, Number(row['Stock (Pcs)'] || row['Stock'] || row['stock (pcs)'] || row['stock'] || row['Available'] || 0));
           const pcsPerInner = Number(row['Pcs Per Inner'] || row['pcs per inner'] || 0);
           const innerPerCarton = Number(row['Pcs Per Carton'] || row['pcs per carton'] || 0);
 
@@ -140,14 +138,12 @@ const StockManagement: React.FC = () => {
 
           const currentSellingPrice = current.pricePerUnit || 0;
           const currentMrp = current.mrp || 0;
-          const currentCartons = current.stock?.stockCartons || 0;
-          const currentInners = current.stock?.stockInners || 0;
-          const currentLoose = current.stock?.stockLoose || 0;
+          const currentStockPcs = current.stock?.availableQty || 0;
           const currentPpi = current.pcsPerInner || 0;
           const currentPpc = current.innerPerCarton || 0;
 
           const priceChanged = currentSellingPrice !== sellingPrice || currentMrp !== mrp;
-          const stockChanged = currentCartons !== cartons || currentInners !== inners || currentLoose !== loose;
+          const stockChanged = currentStockPcs !== stockPcs;
           const hierarchyChanged = currentPpi !== pcsPerInner || currentPpc !== innerPerCarton;
 
           if (priceChanged || stockChanged || hierarchyChanged) {
@@ -157,8 +153,8 @@ const StockManagement: React.FC = () => {
               name: current.name,
               oldPrices: { sellingPrice: currentSellingPrice, mrp: currentMrp },
               newPrices: { sellingPrice, mrp },
-              oldStock: { cartons: currentCartons, inners: currentInners, loose: currentLoose },
-              newStock: { cartons, inners, loose },
+              oldStockPcs: currentStockPcs,
+              newStockPcs: stockPcs,
               oldHierarchy: { ppi: currentPpi, ppc: currentPpc },
               newHierarchy: { ppi: pcsPerInner, ppc: innerPerCarton },
               priceChanged,
@@ -193,9 +189,7 @@ const StockManagement: React.FC = () => {
           productId: item.productId,
           pricePerUnit: item.newPrices.sellingPrice,
           mrp: item.newPrices.mrp,
-          cartons: item.newStock.cartons,
-          inners: item.newStock.inners,
-          loose: item.newStock.loose,
+          stockPcs: item.newStockPcs,
           pcsPerInner: item.newHierarchy.ppi,
           innerPerCarton: item.newHierarchy.ppc
         }));
@@ -689,7 +683,7 @@ const StockManagement: React.FC = () => {
                   <tr>
                     <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left' }}>Product</th>
                     <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left' }}>Price Changes</th>
-                    <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left' }}>Stock Changes</th>
+                    <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left' }}>Stock (Pcs)</th>
                     <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left' }}>Packing (Pcs)</th>
                   </tr>
                 </thead>
@@ -713,10 +707,11 @@ const StockManagement: React.FC = () => {
                       </td>
                       <td style={{ padding: '0.6rem 0.8rem' }}>
                         {item.notFound ? '—' : item.stockChanged ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.78rem' }}>
-                            <div>Ctn: <span style={{ textDecoration: 'line-through', color: 'var(--text-dim)' }}>{item.oldStock.cartons}</span> → <span style={{ fontWeight: 700, color: '#10B981' }}>{item.newStock.cartons}</span></div>
-                            <div>Inr: <span style={{ textDecoration: 'line-through', color: 'var(--text-dim)' }}>{item.oldStock.inners}</span> → <span style={{ fontWeight: 700, color: '#06B6D4' }}>{item.newStock.inners}</span></div>
-                            <div>Loose: <span style={{ textDecoration: 'line-through', color: 'var(--text-dim)' }}>{item.oldStock.loose}</span> → <span style={{ fontWeight: 700, color: 'var(--text)' }}>{item.newStock.loose}</span></div>
+                          <div style={{ fontSize: '0.82rem' }}>
+                            <span style={{ textDecoration: 'line-through', color: 'var(--text-dim)' }}>{item.oldStockPcs}</span>
+                            {' → '}
+                            <span style={{ fontWeight: 700, color: item.newStockPcs >= item.oldStockPcs ? '#10B981' : '#EF4444' }}>{item.newStockPcs}</span>
+                            <span style={{ color: 'var(--text-dim)', fontSize: '0.72rem' }}> pcs</span>
                           </div>
                         ) : (
                           <span style={{ color: 'var(--text-dim)' }}>No change</span>
